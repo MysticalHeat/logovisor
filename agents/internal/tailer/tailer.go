@@ -33,6 +33,7 @@ type fileEvent struct {
 	AgentID       string      `json:"agent_id"`
 	HostID        string      `json:"host_id"`
 	SourceType    string      `json:"source_type"`
+	Level         string      `json:"level,omitempty"`
 	Timestamp     string      `json:"timestamp"`
 	ObservedAt    string      `json:"observed_at"`
 	Message       string      `json:"message"`
@@ -158,6 +159,7 @@ func (t *Tailer) buildEvent(offset int64, lineBytes []byte) ([]byte, error) {
 		AgentID:       t.agentID,
 		HostID:        t.hostID,
 		SourceType:    "file",
+		Level:         detectLogLevel(message),
 		Timestamp:     observedAt.Format(time.RFC3339Nano),
 		ObservedAt:    observedAt.Format(time.RFC3339Nano),
 		Message:       message,
@@ -173,4 +175,21 @@ func (t *Tailer) buildEvent(offset int64, lineBytes []byte) ([]byte, error) {
 func hashEventID(hostID, path string, offset int64, length int) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%d", hostID, path, offset, length)))
 	return hex.EncodeToString(sum[:])
+}
+
+func detectLogLevel(message string) string {
+	upper := strings.ToUpper(message)
+
+	switch {
+	case strings.Contains(upper, "FATAL"), strings.Contains(upper, "PANIC"), strings.Contains(upper, "ERROR"), strings.Contains(upper, "ERR "):
+		return "error"
+	case strings.Contains(upper, "WARN"), strings.Contains(upper, "WARNING"):
+		return "warn"
+	case strings.Contains(upper, "DEBUG"), strings.Contains(upper, "TRACE"):
+		return "debug"
+	case strings.Contains(upper, "INFO"):
+		return "info"
+	default:
+		return ""
+	}
 }

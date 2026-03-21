@@ -88,6 +88,16 @@
                 <option value="journald">journald</option>
               </select>
             </label>
+            <label>
+              <span class="muted">Level</span>
+              <select id="logs-level">
+                <option value="">all</option>
+                <option value="error">error</option>
+                <option value="warn">warn</option>
+                <option value="info">info</option>
+                <option value="debug">debug</option>
+              </select>
+            </label>
             <label><span class="muted">From</span><input id="logs-from" placeholder="2026-03-21T00:00:00.000Z" /></label>
             <label><span class="muted">To</span><input id="logs-to" placeholder="2026-03-22T00:00:00.000Z" /></label>
             <button id="search-logs" class="primary">Search</button>

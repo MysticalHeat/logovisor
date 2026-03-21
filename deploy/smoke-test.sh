@@ -143,6 +143,7 @@ docker_ctx exec "$CLICKHOUSE_CONTAINER" clickhouse-client --user logovisor --pas
     agent_id String,
     host_id String,
     source_type String,
+    level String,
     message String,
     source_json String
   )

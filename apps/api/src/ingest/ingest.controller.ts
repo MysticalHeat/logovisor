@@ -57,6 +57,11 @@ class IngestEventDto {
   @IsString()
   source_type?: string;
 
+  @ApiPropertyOptional({ example: 'error' })
+  @IsOptional()
+  @IsString()
+  level?: string;
+
   @ApiProperty({ example: 'hello from logovisor' })
   @IsString()
   @IsNotEmpty()

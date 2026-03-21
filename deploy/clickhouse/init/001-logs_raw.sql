@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS logs_raw (
   agent_id String,
   host_id String,
   source_type String,
+  level String,
   message String,
   source_json String
 )

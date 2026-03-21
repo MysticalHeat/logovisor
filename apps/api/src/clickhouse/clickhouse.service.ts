@@ -9,6 +9,7 @@ export interface ClickhouseLogRow {
   agentId: string;
   hostId: string;
   sourceType: string;
+  level: string;
   message: string;
   source: Record<string, unknown>;
 }
@@ -17,6 +18,7 @@ interface SearchLogsParams {
   agentId?: string;
   hostId?: string;
   sourceType?: string;
+  level?: string;
   query?: string;
   from?: Date;
   to?: Date;
@@ -57,6 +59,9 @@ export class ClickhouseService {
     if (params.sourceType) {
       whereClauses.push(`source_type = ${quoteSqlString(params.sourceType)}`);
     }
+    if (params.level) {
+      whereClauses.push(`level = ${quoteSqlString(params.level)}`);
+    }
     if (params.query) {
       whereClauses.push(`positionCaseInsensitive(message, ${quoteSqlString(params.query)}) > 0`);
     }
@@ -80,6 +85,7 @@ export class ClickhouseService {
       '  agent_id,',
       '  host_id,',
       '  source_type,',
+      '  level,',
       '  message,',
       '  source_json',
       'FROM logs_raw',
@@ -112,6 +118,7 @@ export class ClickhouseService {
         agentId: stringifyValue(row.agent_id),
         hostId: stringifyValue(row.host_id),
         sourceType: stringifyValue(row.source_type),
+        level: stringifyValue(row.level),
         message: stringifyValue(row.message),
         source: parseSourceJson(row.source_json),
       }));
@@ -162,6 +169,7 @@ export class ClickhouseService {
       agent_id: stringifyValue(event.agentId ?? event.agent_id),
       host_id: stringifyValue(event.host_id),
       source_type: stringifyValue(event.source_type),
+      level: stringifyValue(event.level),
       message: stringifyValue(event.message),
       source_json: JSON.stringify(event.source ?? {}),
     }));

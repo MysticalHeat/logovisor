@@ -40,6 +40,10 @@ func TestBuildEnvelope(t *testing.T) {
 		t.Errorf("expected source_type journald, got %s", env.SourceType)
 	}
 
+	if env.Level != "info" {
+		t.Errorf("expected level info, got %s", env.Level)
+	}
+
 	if env.SchemaVersion != 1 {
 		t.Errorf("expected schema version 1, got %d", env.SchemaVersion)
 	}

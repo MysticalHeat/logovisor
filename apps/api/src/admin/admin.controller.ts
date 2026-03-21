@@ -75,6 +75,11 @@ class LogSearchQueryDto {
   @ApiPropertyOptional({ example: 'error' })
   @IsOptional()
   @IsString()
+  level?: string;
+
+  @ApiPropertyOptional({ example: 'error' })
+  @IsOptional()
+  @IsString()
   query?: string;
 
   @ApiPropertyOptional({ example: '2026-03-21T00:00:00.000Z' })
@@ -249,6 +254,9 @@ class LogEventDto {
 
   @ApiProperty({ example: 'file' })
   sourceType: string;
+
+  @ApiPropertyOptional({ example: 'error' })
+  level?: string;
 
   @ApiProperty({ example: 'hello from logovisor' })
   message: string;
@@ -583,6 +591,7 @@ export class AdminController {
       agentId: query.agentId,
       hostId: query.hostId,
       sourceType: query.sourceType,
+      level: query.level,
       query: query.query,
       from,
       to,
@@ -600,6 +609,7 @@ export class AdminController {
       agentId: row.agentId,
       hostId: row.hostId,
       sourceType: row.sourceType,
+      level: row.level || undefined,
       message: row.message,
       source: row.source,
     }));

@@ -31,6 +31,7 @@ type Envelope struct {
 	AgentID       string                 `json:"agent_id"`
 	HostID        string                 `json:"host_id"`
 	SourceType    string                 `json:"source_type"`
+	Level         string                 `json:"level,omitempty"`
 	Timestamp     string                 `json:"timestamp"`
 	ObservedAt    string                 `json:"observed_at"`
 	Message       string                 `json:"message"`
@@ -122,6 +123,7 @@ func (r *Reader) buildEnvelope(raw JournalEvent) (*Envelope, string) {
 		AgentID:       r.AgentID,
 		HostID:        r.HostID,
 		SourceType:    "journald",
+		Level:         normalizeJournaldPriority(stringifyJournalField(raw["PRIORITY"])),
 		Timestamp:     timestamp,
 		ObservedAt:    time.Now().UTC().Format(time.RFC3339Nano),
 		Message:       message,
@@ -155,5 +157,20 @@ func stringifyJournalField(value interface{}) string {
 		return ""
 	default:
 		return fmt.Sprint(typed)
+	}
+}
+
+func normalizeJournaldPriority(priority string) string {
+	switch strings.TrimSpace(priority) {
+	case "0", "1", "2", "3":
+		return "error"
+	case "4":
+		return "warn"
+	case "5", "6":
+		return "info"
+	case "7":
+		return "debug"
+	default:
+		return ""
 	}
 }

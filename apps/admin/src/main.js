@@ -314,6 +314,7 @@ async function runLogSearch(resetCursor = true) {
     ['hostId', document.getElementById('logs-host-id').value.trim()],
     ['agentId', document.getElementById('logs-agent-id').value.trim()],
     ['sourceType', document.getElementById('logs-source-type').value],
+    ['level', document.getElementById('logs-level').value],
     ['from', document.getElementById('logs-from').value.trim()],
     ['to', document.getElementById('logs-to').value.trim()],
   ];
@@ -342,6 +343,7 @@ function renderLogs() {
             <th>Timestamp</th>
             <th>Host ID</th>
             <th>Source</th>
+            <th>Level</th>
             <th>Message</th>
           </tr>
         </thead>
@@ -352,6 +354,7 @@ function renderLogs() {
                 <td>${escapeHtml(formatDate(row.timestamp))}</td>
                 <td><code>${escapeHtml(row.hostId)}</code></td>
                 <td>${escapeHtml(row.sourceType)}</td>
+                <td>${escapeHtml(row.level || '—')}</td>
                 <td>
                   <div>${escapeHtml(row.message)}</div>
                   <details>
