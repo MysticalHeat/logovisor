@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "admin:build": "npm --workspace=admin run build",
     "api:build": "npm --workspace=api run build",
     "api:start": "npm --workspace=api run start",
     "api:start:dev": "npm --workspace=api run start:dev",
@@ -19,7 +20,7 @@
     "generator:run": "cd log-generator && python3 generator.py --no-journald --file-dir /tmp/logovisor-logs",
     "generator:test": "cd log-generator && python3 templates.py",
     "smoke-test": "bash ./deploy/smoke-test.sh",
-    "build": "npm run api:build && npm run agent:build",
+    "build": "npm run admin:build && npm run api:build && npm run agent:build",
     "test": "npm run api:test && npm run agent:test",
     "lint": "npm run api:lint",
     "fmt": "npm run agent:fmt"

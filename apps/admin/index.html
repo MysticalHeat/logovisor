@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>logovisor admin</title>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <div id="login-shell" class="login-shell">
+      <div class="login-card">
+        <h1>logovisor admin</h1>
+        <p>Operator console for fleet health, logs, tokens, and host telemetry.</p>
+        <div class="stack">
+          <label>
+            <span class="muted">Username</span>
+            <input id="username" placeholder="username" value="admin" />
+          </label>
+          <label>
+            <span class="muted">Password</span>
+            <input id="password" placeholder="password" type="password" />
+          </label>
+          <button id="login-button" class="primary">Login</button>
+          <div id="login-error" class="feedback muted"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="app-shell" class="app-shell hidden">
+      <aside class="sidebar">
+        <div>
+          <div class="brand">logovisor</div>
+          <div id="operator-label" class="muted">operator</div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-section="fleet">Fleet</button>
+          <button class="nav-item" data-section="logs">Logs</button>
+          <button class="nav-item" data-section="tokens">Tokens</button>
+        </nav>
+        <div class="sidebar-footer">
+          <a class="pill-link" href="/api/docs" target="_blank" rel="noreferrer">Swagger</a>
+          <button id="logout-button" class="ghost">Logout</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="header">
+          <div>
+            <h2 id="section-title">Fleet</h2>
+            <p id="section-subtitle" class="muted">Agent health, runtime tokens, and latest host metrics.</p>
+          </div>
+          <button id="refresh-button">Refresh</button>
+        </header>
+
+        <section id="section-fleet" class="section active">
+          <div id="fleet-kpis" class="kpis"></div>
+          <div class="panel controls-grid">
+            <label>
+              <span class="muted">Search</span>
+              <input id="agent-search" placeholder="hostId / hostname / installationId" />
+            </label>
+            <label>
+              <span class="muted">Status</span>
+              <select id="agent-status-filter">
+                <option value="">all</option>
+                <option value="online">online</option>
+                <option value="offline">offline</option>
+              </select>
+            </label>
+            <button id="apply-agent-filters" class="primary">Apply filters</button>
+          </div>
+          <div class="panel">
+            <h3>Fleet</h3>
+            <div id="agents-output"></div>
+          </div>
+        </section>
+
+        <section id="section-logs" class="section">
+          <div class="panel controls-grid logs-grid">
+            <label><span class="muted">Query</span><input id="logs-query" placeholder="error, timeout, kernel" /></label>
+            <label><span class="muted">Host ID</span><input id="logs-host-id" placeholder="hackathon2" /></label>
+            <label><span class="muted">Agent ID</span><input id="logs-agent-id" placeholder="agent uuid" /></label>
+            <label>
+              <span class="muted">Source type</span>
+              <select id="logs-source-type">
+                <option value="">all</option>
+                <option value="file">file</option>
+                <option value="journald">journald</option>
+              </select>
+            </label>
+            <label><span class="muted">From</span><input id="logs-from" placeholder="2026-03-21T00:00:00.000Z" /></label>
+            <label><span class="muted">To</span><input id="logs-to" placeholder="2026-03-22T00:00:00.000Z" /></label>
+            <button id="search-logs" class="primary">Search</button>
+          </div>
+          <div class="panel">
+            <h3>Log search results</h3>
+            <div id="logs-output"></div>
+            <div class="row-actions top-gap">
+              <button id="load-more-logs" class="ghost hidden">Load more</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-tokens" class="section">
+          <div class="split-two">
+            <div class="panel">
+              <h3>Create enrollment token</h3>
+              <div class="token-form">
+                <label>
+                  <span class="muted">Label</span>
+                  <input id="token-label" placeholder="label" value="admin ui token" />
+                </label>
+                <label>
+                  <span class="muted">TTL minutes</span>
+                  <input id="token-ttl" placeholder="ttl minutes" value="60" />
+                </label>
+                <button id="create-token" class="primary">Create token</button>
+              </div>
+              <pre id="token-output" class="hidden"></pre>
+            </div>
+            <div class="panel">
+              <h3>Enrollment tokens</h3>
+              <div id="enrollment-tokens-output"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <div id="drawer-backdrop" class="drawer-backdrop hidden"></div>
+      <aside id="agent-drawer" class="drawer hidden">
+        <div class="drawer-header">
+          <div>
+            <h3 id="drawer-title">Agent detail</h3>
+            <p id="drawer-subtitle" class="muted">Deep dive into heartbeats, metrics, and runtime tokens.</p>
+          </div>
+          <button id="close-drawer" class="ghost">Close</button>
+        </div>
+        <div id="agent-detail"></div>
+        <div class="panel top-gap">
+          <h3>Runtime tokens</h3>
+          <div id="agent-tokens"></div>
+        </div>
+      </aside>
+    </div>
+  </body>
+  </html>

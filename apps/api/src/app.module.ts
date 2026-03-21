@@ -15,7 +15,9 @@ import { MonitoringModule } from './monitoring/monitoring.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'public', 'admin'),
+      rootPath:
+        process.env.LOGOVISOR_ADMIN_STATIC_DIR ??
+        join(process.cwd(), 'apps', 'admin', 'dist'),
       serveRoot: '/admin',
     }),
     AdminModule,

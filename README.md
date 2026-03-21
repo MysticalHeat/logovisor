@@ -5,6 +5,7 @@
 ## Структура
 
 - `apps/api` — NestJS master API
+- `apps/admin` — отдельный frontend admin app (Vite, static build)
 - `agents` — Go-агент
 - `deploy/docker-compose.yml` — единый Docker Compose файл для всего стека
 - `deploy/docker-compose.agent.yml` — отдельный Docker Compose файл только для агента
@@ -20,6 +21,8 @@
 - `traefik` — reverse proxy с auto-issue TLS сертификата через Let's Encrypt
 - `api` — master API
 - `agent` — единый агент с file input и journald input
+
+Admin UI собирается отдельно из `apps/admin`, но по-прежнему раздаётся с того же origin через API по адресу `/admin`.
 
 ## Деплой через Docker Compose
 
