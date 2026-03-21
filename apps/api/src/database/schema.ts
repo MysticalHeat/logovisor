@@ -17,8 +17,11 @@ export const agents = pgTable('agents', {
 export const enrollmentTokens = pgTable('enrollment_tokens', {
   id: text('id').primaryKey(),
   tokenHash: text('token_hash').unique().notNull(),
+  tokenPrefix: text('token_prefix'),
+  label: text('label'),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

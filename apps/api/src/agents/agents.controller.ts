@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Headers,
@@ -9,6 +10,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiProperty,
@@ -26,6 +28,8 @@ import {
   IsString,
 } from 'class-validator';
 import { DatabaseService } from '../database/database.service';
+import { MonitoringService } from '../monitoring/monitoring.service';
+import { ApiStandardErrorResponses } from '../shared/error-response';
 import {
   createOpaqueToken,
   extractBearerToken,
@@ -105,12 +109,16 @@ class StatusResponseDto {
 @Controller('agents')
 @ApiTags('agents')
 export class AgentsController {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly monitoringService: MonitoringService,
+  ) {}
 
   @Post('enroll')
   @HttpCode(200)
   @ApiOperation({ summary: 'Enroll agent using bootstrap token' })
   @ApiBody({ type: EnrollDto })
+  @ApiStandardErrorResponses(400, 401)
   @ApiOkResponse({
     description: 'Agent enrolled successfully.',
     type: EnrollResponseDto,
@@ -132,12 +140,14 @@ export class AgentsController {
               hashToken(enrollDto.bootstrapToken),
             ),
             isNull(schema.enrollmentTokens.usedAt),
+            isNull(schema.enrollmentTokens.revokedAt),
             gt(schema.enrollmentTokens.expiresAt, new Date()),
           ),
         )
         .limit(1);
 
       if (!tokenRecord) {
+        this.monitoringService.recordEnroll(false);
         throw new UnauthorizedException('invalid or expired enrollment token');
       }
 
@@ -173,6 +183,8 @@ export class AgentsController {
         .set({ usedAt: new Date() })
         .where(eq(schema.enrollmentTokens.id, tokenRecord.id));
 
+      this.monitoringService.recordEnroll(true);
+
       return {
         agentId,
         agentToken,
@@ -183,8 +195,14 @@ export class AgentsController {
   @Post('heartbeat')
   @HttpCode(200)
   @ApiBearerAuth('agent-bearer')
+  @ApiHeader({
+    name: 'Authorization',
+    required: true,
+    description: 'Bearer runtime token issued during enrollment.',
+  })
   @ApiOperation({ summary: 'Submit agent heartbeat' })
   @ApiBody({ type: HeartbeatDto })
+  @ApiStandardErrorResponses(400, 401)
   @ApiOkResponse({
     description: 'Heartbeat accepted.',
     type: StatusResponseDto,
@@ -197,6 +215,7 @@ export class AgentsController {
 
     const token = extractBearerToken(authorizationHeader);
     if (!token) {
+      this.monitoringService.recordHeartbeat(false);
       throw new UnauthorizedException('missing bearer token');
     }
 
@@ -212,7 +231,13 @@ export class AgentsController {
       .limit(1);
 
     if (!tokenRecord) {
+      this.monitoringService.recordHeartbeat(false);
       throw new UnauthorizedException('invalid agent token');
+    }
+
+    if (heartbeatDto.queueDepth !== undefined && heartbeatDto.queueDepth < 0) {
+      this.monitoringService.recordHeartbeat(false);
+      throw new BadRequestException('queueDepth must be greater than or equal to 0');
     }
 
     await this.databaseService.db.insert(schema.heartbeatHistory).values({
@@ -230,6 +255,8 @@ export class AgentsController {
       .update(schema.agents)
       .set({ lastSeenAt: new Date() })
       .where(eq(schema.agents.id, tokenRecord.agentId));
+
+    this.monitoringService.recordHeartbeat(true);
 
     return { status: 'ok' };
   }

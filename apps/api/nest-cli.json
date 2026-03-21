@@ -12,6 +12,12 @@
           "introspectComments": true
         }
       }
+    ],
+    "assets": [
+      {
+        "include": "public/**/*",
+        "outDir": "dist/public"
+      }
     ]
   }
 }
