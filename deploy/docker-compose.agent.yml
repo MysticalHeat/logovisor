@@ -1,0 +1,42 @@
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: agents/Dockerfile
+    restart: unless-stopped
+    user: '0:0'
+    environment:
+      LOGOVISOR_MASTER_URL: '${LOGOVISOR_MASTER_URL:-https://hack.nomli-com.ru/api}'
+      LOGOVISOR_BOOTSTRAP_TOKEN: '${LOGOVISOR_BOOTSTRAP_TOKEN:-logovisor-bootstrap-token}'
+      LOGOVISOR_HOST_ID: '${LOGOVISOR_AGENT_HOST_ID:-docker-agent}'
+      LOGOVISOR_LOG_FILE_PATH: '/host-logs/${LOGOVISOR_AGENT_LOG_FILENAME:-logovisor-agent.log}'
+      LOGOVISOR_DB_PATH: '/var/lib/logovisor/agent.db'
+      LOGOVISOR_ENABLE_FILE_INPUT: '${LOGOVISOR_ENABLE_FILE_INPUT:-true}'
+      LOGOVISOR_ENABLE_JOURNALD: '${LOGOVISOR_ENABLE_JOURNALD:-true}'
+      LOGOVISOR_JOURNALD_UNITS: '${LOGOVISOR_JOURNALD_UNITS:-}'
+      LOGOVISOR_FLUSH_INTERVAL_SECONDS: '${LOGOVISOR_FLUSH_INTERVAL_SECONDS:-5}'
+      LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS: '${LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS:-30}'
+    volumes:
+      - type: bind
+        source: '${LOGOVISOR_HOST_LOG_DIR:-/tmp}'
+        target: /host-logs
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /var/log/journal
+        target: /var/log/journal
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /run/log/journal
+        target: /run/log/journal
+        read_only: true
+        bind:
+          create_host_path: true
+      - '/etc/machine-id:/etc/machine-id:ro'
+      - agent-data:/var/lib/logovisor
+
+volumes:
+  agent-data:
