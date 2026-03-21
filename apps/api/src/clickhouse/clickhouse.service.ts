@@ -188,6 +188,27 @@ export class ClickhouseService {
     }
   }
 
+  async queryJsonEachRow(query: string): Promise<Record<string, unknown>[]> {
+    if (!this.clickhouseUrl) {
+      return [];
+    }
+
+    const response = await this.executeClickhouseQuery(query);
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new Error(
+        `clickhouse query failed with status ${response.status}: ${text}`,
+      );
+    }
+
+    return text
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
   private async executeClickhouseQuery(
     query: string,
     body?: string,
@@ -234,7 +255,7 @@ function stringifyValue(value: unknown): string {
   return String(value);
 }
 
-function quoteSqlString(value: string): string {
+export function quoteSqlString(value: string): string {
   return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 }
 

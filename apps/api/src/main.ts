@@ -5,10 +5,12 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { DatabaseService } from './database/database.service';
 import { HttpErrorFilter } from './shared/error-response';
+import { requestLoggingMiddleware } from './shared/request-logging.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
+  app.use(requestLoggingMiddleware);
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

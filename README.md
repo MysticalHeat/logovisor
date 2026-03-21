@@ -12,6 +12,11 @@
 - `deploy/systemd` — systemd unit для агента
 - `deploy/packaging/deb` — заготовка под `.deb` пакет
 
+## Документация
+
+- [Alert rules DSL](./ALERTS_DSL.md)
+- [Alerts frontend integration](./ALERTS_INTEGRATION.md)
+
 ## Что поднимает единый compose
 
 `deploy/docker-compose.yml` поднимает сразу весь MVP-стек:
@@ -186,9 +191,9 @@ LOGOVISOR_AGENT_LOG_FILENAME=syslog
 Где взять bootstrap token:
 
 - создать через админку:
-  - `https://hack.nomli-com.ru/admin/`
+    - `https://hack.nomli-com.ru/admin/`
 - или через API после логина:
-  - `POST /api/admin/enrollment-tokens`
+    - `POST /api/admin/enrollment-tokens`
 
 Если `journald` не нужен:
 
@@ -301,9 +306,9 @@ docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml logs -f 
 Проверить, что агент появился на master:
 
 - открыть админку:
-  - `https://hack.nomli-com.ru/admin/`
+    - `https://hack.nomli-com.ru/admin/`
 - или вызвать:
-  - `GET https://hack.nomli-com.ru/api/admin/agents`
+    - `GET https://hack.nomli-com.ru/api/admin/agents`
 
 ## Важные переменные в `.env`
 

@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -27,6 +28,8 @@ export class ErrorResponseDto {
 
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpErrorFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const context = host.switchToHttp();
     const response = context.getResponse();
@@ -40,6 +43,13 @@ export class HttpErrorFilter implements ExceptionFilter {
     const errorBody =
       exception instanceof HttpException ? exception.getResponse() : null;
     const payload = normalizeErrorPayload(status, errorBody);
+
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.logger.error(
+        `${request.method} ${request.originalUrl ?? request.url}`,
+        exception instanceof Error ? exception.stack : JSON.stringify(exception),
+      );
+    }
 
     response.status(status).json({
       error: {
@@ -99,6 +109,8 @@ function statusToCode(status: number): string {
   switch (status) {
     case HttpStatus.BAD_REQUEST:
       return 'bad_request';
+    case HttpStatus.CONFLICT:
+      return 'conflict';
     case HttpStatus.UNAUTHORIZED:
       return 'unauthorized';
     case HttpStatus.NOT_FOUND:

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AdminModule } from './admin/admin.module';
+import { AlertsModule } from './alerts/alerts.module';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { AgentsModule } from './agents/agents.module';
@@ -21,6 +22,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
       serveRoot: '/admin',
     }),
     AdminModule,
+    AlertsModule,
     AuthModule,
     DatabaseModule,
     AgentsModule,

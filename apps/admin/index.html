@@ -35,6 +35,7 @@
         <nav class="nav">
           <button class="nav-item active" data-section="fleet">Fleet</button>
           <button class="nav-item" data-section="logs">Logs</button>
+          <button class="nav-item" data-section="alerts">Alerts</button>
           <button class="nav-item" data-section="tokens">Tokens</button>
         </nav>
         <div class="sidebar-footer">
@@ -107,6 +108,82 @@
             <div id="logs-output"></div>
             <div class="row-actions top-gap">
               <button id="load-more-logs" class="ghost hidden">Load more</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-alerts" class="section">
+          <div class="split-two alerts-layout">
+            <div class="stack-panel">
+              <div class="panel">
+                <h3>Telegram integrations</h3>
+                <div class="controls-grid">
+                  <label><span class="muted">Name</span><input id="alert-integration-name" placeholder="ops-main" /></label>
+                  <label><span class="muted">Bot token</span><input id="alert-bot-token" placeholder="123456:telegram-bot-token" /></label>
+                  <label><span class="muted">Chat ID</span><input id="alert-chat-id" placeholder="-1001234567890" /></label>
+                  <label><span class="muted">Thread ID</span><input id="alert-thread-id" placeholder="optional" /></label>
+                  <button id="create-alert-integration" class="primary">Save integration</button>
+                </div>
+                <div id="alert-integration-feedback" class="feedback muted top-gap"></div>
+                <div id="alert-integrations-output" class="top-gap"></div>
+              </div>
+              <div class="panel">
+                <h3>Alert rules</h3>
+                <div class="row-actions">
+                  <button id="load-alert-snippet-error" class="ghost">Insert error spike snippet</button>
+                  <button id="load-alert-snippet-heartbeat" class="ghost">Insert heartbeat snippet</button>
+                </div>
+                <label class="top-gap">
+                  <span class="muted">Rule DSL</span>
+                  <textarea id="alert-dsl-input" class="dsl-input" placeholder='rule "error_spike" {
+  source = logs
+  where = level = "error"
+  window = 5m
+  trigger = count() >= 10
+  severity = "error"
+  message = "Too many errors"
+  notify = telegram("ops-main")
+}'></textarea>
+                </label>
+                <div class="row-actions top-gap">
+                  <button id="validate-alert-dsl">Validate</button>
+                  <button id="preview-alert-dsl">Test on recent data</button>
+                  <button id="create-alert-rule" class="primary">Create rule</button>
+                </div>
+                <div id="alert-dsl-feedback" class="feedback muted top-gap"></div>
+                <div class="split-two top-gap alert-preview-grid">
+                  <div>
+                    <h4>Hints</h4>
+                    <div id="alert-dsl-metadata" class="muted"></div>
+                  </div>
+                  <div>
+                    <h4>Validation preview</h4>
+                    <pre id="alert-dsl-preview">No validation yet.</pre>
+                  </div>
+                </div>
+                <div id="alert-rules-output" class="top-gap"></div>
+              </div>
+              <div class="panel">
+                <h3>Incidents</h3>
+                <div id="alert-incidents-output"></div>
+              </div>
+              <div class="panel">
+                <h3>Notification history</h3>
+                <div id="alert-notifications-output"></div>
+              </div>
+              <div class="panel">
+                <h3>Silences</h3>
+                <div class="controls-grid">
+                  <label><span class="muted">Rule ID</span><input id="alert-silence-rule-id" placeholder="optional" /></label>
+                  <label><span class="muted">Subject type</span><input id="alert-silence-subject-type" placeholder="agentId / hostId" /></label>
+                  <label><span class="muted">Subject ID</span><input id="alert-silence-subject-id" placeholder="optional" /></label>
+                  <label><span class="muted">Reason</span><input id="alert-silence-reason" placeholder="maintenance" /></label>
+                  <label><span class="muted">Duration minutes</span><input id="alert-silence-duration" value="60" /></label>
+                  <button id="create-alert-silence">Create silence</button>
+                </div>
+                <div id="alert-silence-feedback" class="feedback muted top-gap"></div>
+                <div id="alert-silences-output" class="top-gap"></div>
+              </div>
             </div>
           </div>
         </section>

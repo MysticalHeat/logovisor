@@ -9,12 +9,19 @@ const state = {
   enrollmentTokens: [],
   logs: [],
   logsCursor: null,
+  alertIntegrations: [],
+  alertRules: [],
+  alertDslMetadata: null,
+  alertIncidents: [],
+  alertSilences: [],
+  alertNotifications: [],
   activeSection: 'fleet',
 };
 
 const sectionCopy = {
   fleet: ['Fleet', 'Agent health, runtime tokens, and latest host metrics.'],
   logs: ['Logs', 'Search ingested log events with cursor-based pagination.'],
+  alerts: ['Alerts', 'Telegram integrations, DSL rules, and validation hints.'],
   tokens: ['Tokens', 'Create, inspect, and revoke enrollment bootstrap tokens.'],
 };
 
@@ -74,10 +81,26 @@ async function api(path, options = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(await readApiError(response));
   }
 
   return response.json();
+}
+
+async function readApiError(response) {
+  const text = await response.text();
+
+  try {
+    const parsed = JSON.parse(text);
+    return (
+      parsed?.error?.message ||
+      parsed?.message ||
+      text ||
+      `Request failed with status ${response.status}`
+    );
+  } catch {
+    return text || `Request failed with status ${response.status}`;
+  }
 }
 
 function setSection(section) {
@@ -107,7 +130,51 @@ async function refreshSession() {
 }
 
 async function refreshAll() {
-  await Promise.all([refreshAgents(), refreshEnrollmentTokens()]);
+  await Promise.all([
+    refreshAgents(),
+    refreshEnrollmentTokens(),
+    refreshAlertIntegrations(),
+    refreshAlertRules(),
+    refreshAlertDslMetadata(),
+    refreshAlertIncidents(),
+    refreshAlertSilences(),
+    refreshAlertNotifications(),
+  ]);
+}
+
+async function refreshAlertIntegrations() {
+  const list = await api('/admin/alerts/telegram/integrations');
+  state.alertIntegrations = list.items || [];
+  renderAlertIntegrations();
+}
+
+async function refreshAlertRules() {
+  const list = await api('/admin/alerts/rules');
+  state.alertRules = list.items || [];
+  renderAlertRules();
+}
+
+async function refreshAlertDslMetadata() {
+  state.alertDslMetadata = await api('/admin/alerts/dsl-metadata');
+  renderAlertDslMetadata();
+}
+
+async function refreshAlertIncidents() {
+  const list = await api('/admin/alerts/incidents');
+  state.alertIncidents = list.items || [];
+  renderAlertIncidents();
+}
+
+async function refreshAlertSilences() {
+  const list = await api('/admin/alerts/silences');
+  state.alertSilences = list.items || [];
+  renderAlertSilences();
+}
+
+async function refreshAlertNotifications() {
+  const list = await api('/admin/alerts/notifications');
+  state.alertNotifications = list.items || [];
+  renderAlertNotifications();
 }
 
 function currentAgentQuery() {
@@ -410,6 +477,289 @@ function renderEnrollmentTokens() {
   });
 }
 
+function renderAlertIntegrations() {
+  document.getElementById('alert-integrations-output').innerHTML = state.alertIntegrations.length
+    ? `
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Chat</th>
+            <th>Token</th>
+            <th>Verified</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.alertIntegrations
+            .map((integration) => `
+              <tr>
+                <td><strong>${escapeHtml(integration.name)}</strong></td>
+                <td><code>${escapeHtml(integration.chatId)}${integration.threadId ? ` / ${escapeHtml(integration.threadId)}` : ''}</code></td>
+                <td>${escapeHtml(integration.tokenPreview)}</td>
+                <td>${escapeHtml(formatDate(integration.lastVerifiedAt))}</td>
+                <td>
+                  <button data-test-alert-integration="${integration.id}">Send test</button>
+                  <button data-toggle-alert-integration="${integration.id}">${integration.enabled ? 'Disable' : 'Enable'}</button>
+                  <button class="warn" data-delete-alert-integration="${integration.id}">Delete</button>
+                </td>
+              </tr>`)
+            .join('')}
+        </tbody>
+      </table>`
+    : '<div class="empty">No Telegram integrations configured yet.</div>';
+
+  document.querySelectorAll('[data-test-alert-integration]').forEach((button) => {
+    button.onclick = async () => {
+      const result = await api(`/admin/alerts/telegram/integrations/${button.dataset.testAlertIntegration}/test`, {
+        method: 'POST',
+      });
+      document.getElementById('alert-integration-feedback').textContent = result.description;
+      await refreshAlertIntegrations();
+    };
+  });
+
+  document.querySelectorAll('[data-toggle-alert-integration]').forEach((button) => {
+    button.onclick = async () => {
+      const integration = state.alertIntegrations.find((item) => item.id === button.dataset.toggleAlertIntegration);
+      await api(`/admin/alerts/telegram/integrations/${button.dataset.toggleAlertIntegration}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !integration.enabled }),
+      });
+      await refreshAlertIntegrations();
+    };
+  });
+
+  document.querySelectorAll('[data-delete-alert-integration]').forEach((button) => {
+    button.onclick = async () => {
+      if (!confirm('Delete this integration?')) return;
+      try {
+        await api(`/admin/alerts/telegram/integrations/${button.dataset.deleteAlertIntegration}`, {
+          method: 'DELETE',
+        });
+        await refreshAlertIntegrations();
+      } catch (error) {
+        document.getElementById('alert-integration-feedback').textContent = error.message;
+      }
+    };
+  });
+}
+
+function renderAlertRules() {
+  document.getElementById('alert-rules-output').innerHTML = state.alertRules.length
+    ? `
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Source</th>
+            <th>Severity</th>
+            <th>Integration</th>
+            <th>Updated</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.alertRules
+            .map((rule) => `
+              <tr>
+                <td><strong>${escapeHtml(rule.name)}</strong><details><summary class="muted">dsl</summary><pre>${escapeHtml(rule.dslText)}</pre></details></td>
+                <td>${escapeHtml(rule.source)}</td>
+                <td>${escapeHtml(rule.severity)}</td>
+                <td><code>${escapeHtml(rule.integrationId)}</code></td>
+                <td>${escapeHtml(formatDate(rule.updatedAt))}</td>
+                <td>
+                  <button data-edit-alert-rule="${rule.id}">Load into editor</button>
+                  <button data-toggle-alert-rule="${rule.id}">${rule.enabled ? 'Disable' : 'Enable'}</button>
+                  <button class="warn" data-delete-alert-rule="${rule.id}">Delete</button>
+                </td>
+              </tr>`)
+            .join('')}
+        </tbody>
+      </table>`
+    : '<div class="empty">No alert rules created yet.</div>';
+
+  document.querySelectorAll('[data-edit-alert-rule]').forEach((button) => {
+    button.onclick = () => {
+      const rule = state.alertRules.find((item) => item.id === button.dataset.editAlertRule);
+      if (rule) {
+        document.getElementById('alert-dsl-input').value = rule.dslText;
+        document.getElementById('create-alert-rule').dataset.ruleId = rule.id;
+        document.getElementById('create-alert-rule').textContent = 'Save rule';
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-toggle-alert-rule]').forEach((button) => {
+    button.onclick = async () => {
+      const rule = state.alertRules.find((item) => item.id === button.dataset.toggleAlertRule);
+      const result = await api(`/admin/alerts/rules/${button.dataset.toggleAlertRule}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled: !rule.enabled }),
+      });
+      document.getElementById('alert-dsl-feedback').textContent = result.explanation;
+      await refreshAlertRules();
+    };
+  });
+
+  document.querySelectorAll('[data-delete-alert-rule]').forEach((button) => {
+    button.onclick = async () => {
+      if (!confirm('Delete this rule?')) return;
+      await api(`/admin/alerts/rules/${button.dataset.deleteAlertRule}`, {
+        method: 'DELETE',
+      });
+      await refreshAlertRules();
+    };
+  });
+}
+
+function renderAlertDslMetadata() {
+  if (!state.alertDslMetadata) {
+    document.getElementById('alert-dsl-metadata').textContent = 'Loading metadata...';
+    return;
+  }
+
+  const fields = state.alertDslMetadata.fields || {};
+  document.getElementById('alert-dsl-metadata').innerHTML = `
+    <div><strong>Sources:</strong> ${(state.alertDslMetadata.sources || []).join(', ')}</div>
+    <div class="top-gap"><strong>Operators:</strong> ${(state.alertDslMetadata.operators || []).join(' ')}</div>
+    <div class="top-gap"><strong>Logs fields:</strong> ${(fields.logs || []).join(', ')}</div>
+    <div class="top-gap"><strong>Heartbeats fields:</strong> ${(fields.heartbeats || []).join(', ')}</div>
+  `;
+}
+
+function renderAlertIncidents() {
+  document.getElementById('alert-incidents-output').innerHTML = state.alertIncidents.length
+    ? `
+      <table>
+        <thead>
+          <tr>
+            <th>Subject</th>
+            <th>Status</th>
+            <th>Message</th>
+            <th>Seen</th>
+            <th>Ack</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.alertIncidents
+            .map((incident) => `
+              <tr>
+                <td><code>${escapeHtml(incident.subjectLabel)}</code></td>
+                <td>${escapeHtml(incident.status)}</td>
+                <td>${escapeHtml(incident.message)}</td>
+                <td>${escapeHtml(formatDate(incident.lastSeenAt))}</td>
+                <td>${escapeHtml(incident.acknowledgedAt ? `acked by ${incident.acknowledgedBy || 'operator'}` : '—')}</td>
+                <td>
+                  <button data-ack-incident="${incident.id}">Ack</button>
+                  <button data-resolve-incident="${incident.id}">Resolve</button>
+                  <button data-silence-incident="${incident.id}">Silence 60m</button>
+                </td>
+              </tr>`)
+            .join('')}
+        </tbody>
+      </table>`
+    : '<div class="empty">No incidents yet.</div>';
+
+  document.querySelectorAll('[data-resolve-incident]').forEach((button) => {
+    button.onclick = async () => {
+      await api(`/admin/alerts/incidents/${button.dataset.resolveIncident}/resolve`, {
+        method: 'POST',
+      });
+      await refreshAlertIncidents();
+    };
+  });
+
+  document.querySelectorAll('[data-ack-incident]').forEach((button) => {
+    button.onclick = async () => {
+      await api(`/admin/alerts/incidents/${button.dataset.ackIncident}/ack`, {
+        method: 'POST',
+        body: JSON.stringify({ acknowledgedBy: state.operator?.username || 'operator' }),
+      });
+      await refreshAlertIncidents();
+    };
+  });
+
+  document.querySelectorAll('[data-silence-incident]').forEach((button) => {
+    button.onclick = async () => {
+      await api(`/admin/alerts/incidents/${button.dataset.silenceIncident}/silence`, {
+        method: 'POST',
+        body: JSON.stringify({ durationMinutes: 60 }),
+      });
+      await Promise.all([refreshAlertIncidents(), refreshAlertSilences()]);
+    };
+  });
+}
+
+function renderAlertNotifications() {
+  document.getElementById('alert-notifications-output').innerHTML = state.alertNotifications.length
+    ? `
+      <table>
+        <thead>
+          <tr>
+            <th>Kind</th>
+            <th>State</th>
+            <th>Incident</th>
+            <th>Sent</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.alertNotifications
+            .slice(0, 20)
+            .map((row) => `
+              <tr>
+                <td>${escapeHtml(row.kind)}</td>
+                <td>${escapeHtml(row.state)}</td>
+                <td><code>${escapeHtml(row.incidentId)}</code></td>
+                <td>${escapeHtml(formatDate(row.sentAt || row.createdAt))}</td>
+                <td>${escapeHtml(row.lastError || '—')}</td>
+              </tr>`)
+            .join('')}
+        </tbody>
+      </table>`
+    : '<div class="empty">No notifications sent yet.</div>';
+}
+
+function renderAlertSilences() {
+  document.getElementById('alert-silences-output').innerHTML = state.alertSilences.length
+    ? `
+      <table>
+        <thead>
+          <tr>
+            <th>Rule</th>
+            <th>Subject</th>
+            <th>Reason</th>
+            <th>Ends</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.alertSilences
+            .map((silence) => `
+              <tr>
+                <td><code>${escapeHtml(silence.ruleId || 'all')}</code></td>
+                <td>${escapeHtml([silence.subjectType, silence.subjectId].filter(Boolean).join(':') || 'all')}</td>
+                <td>${escapeHtml(silence.reason || '—')}</td>
+                <td>${escapeHtml(formatDate(silence.endsAt))}</td>
+                <td><button class="warn" data-cancel-silence="${silence.id}">Cancel</button></td>
+              </tr>`)
+            .join('')}
+        </tbody>
+      </table>`
+    : '<div class="empty">No silences configured.</div>';
+
+  document.querySelectorAll('[data-cancel-silence]').forEach((button) => {
+    button.onclick = async () => {
+      await api(`/admin/alerts/silences/${button.dataset.cancelSilence}/cancel`, {
+        method: 'POST',
+      });
+      await refreshAlertSilences();
+    };
+  });
+}
+
 function openDrawer() {
   document.getElementById('agent-drawer').classList.remove('hidden');
   document.getElementById('drawer-backdrop').classList.remove('hidden');
@@ -451,6 +801,15 @@ document.getElementById('refresh-button').onclick = async () => {
     await refreshAgents();
   } else if (state.activeSection === 'logs') {
     await runLogSearch(true);
+  } else if (state.activeSection === 'alerts') {
+    await Promise.all([
+      refreshAlertIntegrations(),
+      refreshAlertRules(),
+      refreshAlertDslMetadata(),
+      refreshAlertIncidents(),
+      refreshAlertSilences(),
+      refreshAlertNotifications(),
+    ]);
   } else {
     await refreshEnrollmentTokens();
   }
@@ -480,6 +839,103 @@ document.getElementById('create-token').onclick = async () => {
   output.classList.remove('hidden');
   output.textContent = JSON.stringify(result, null, 2);
   await refreshEnrollmentTokens();
+};
+
+document.getElementById('create-alert-integration').onclick = async () => {
+  try {
+    const result = await api('/admin/alerts/telegram/integrations', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('alert-integration-name').value.trim(),
+        botToken: document.getElementById('alert-bot-token').value.trim(),
+        chatId: document.getElementById('alert-chat-id').value.trim(),
+        threadId: document.getElementById('alert-thread-id').value.trim() || undefined,
+      }),
+    });
+    document.getElementById('alert-integration-feedback').textContent = `Saved integration ${result.tokenPreview}`;
+    await refreshAlertIntegrations();
+  } catch (error) {
+    document.getElementById('alert-integration-feedback').textContent = error.message;
+  }
+};
+
+document.getElementById('validate-alert-dsl').onclick = async () => {
+  try {
+    const result = await api('/admin/alerts/parse', {
+      method: 'POST',
+      body: JSON.stringify({
+        dslText: document.getElementById('alert-dsl-input').value,
+      }),
+    });
+    document.getElementById('alert-dsl-feedback').textContent = result.ok
+      ? result.explanation
+      : result.errors?.map((error) => error.message).join('; ');
+    document.getElementById('alert-dsl-preview').textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    document.getElementById('alert-dsl-feedback').textContent = error.message;
+  }
+};
+
+document.getElementById('preview-alert-dsl').onclick = async () => {
+  try {
+    const result = await api('/admin/alerts/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        dslText: document.getElementById('alert-dsl-input').value,
+      }),
+    });
+    document.getElementById('alert-dsl-feedback').textContent = `${result.explanation} Matches: ${result.count}`;
+    document.getElementById('alert-dsl-preview').textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    document.getElementById('alert-dsl-feedback').textContent = error.message;
+  }
+};
+
+document.getElementById('create-alert-rule').onclick = async () => {
+  try {
+    const ruleId = document.getElementById('create-alert-rule').dataset.ruleId;
+    const result = await api(ruleId ? `/admin/alerts/rules/${ruleId}` : '/admin/alerts/rules', {
+      method: ruleId ? 'PATCH' : 'POST',
+      body: JSON.stringify({
+        dslText: document.getElementById('alert-dsl-input').value,
+      }),
+    });
+    document.getElementById('alert-dsl-feedback').textContent = result.explanation;
+    document.getElementById('create-alert-rule').dataset.ruleId = '';
+    document.getElementById('create-alert-rule').textContent = 'Create rule';
+    await refreshAlertRules();
+  } catch (error) {
+    document.getElementById('alert-dsl-feedback').textContent = error.message;
+  }
+};
+
+document.getElementById('create-alert-silence').onclick = async () => {
+  try {
+    const result = await api('/admin/alerts/silences', {
+      method: 'POST',
+      body: JSON.stringify({
+        ruleId: document.getElementById('alert-silence-rule-id').value.trim() || undefined,
+        subjectType: document.getElementById('alert-silence-subject-type').value.trim() || undefined,
+        subjectId: document.getElementById('alert-silence-subject-id').value.trim() || undefined,
+        reason: document.getElementById('alert-silence-reason').value.trim() || undefined,
+        durationMinutes: Number(document.getElementById('alert-silence-duration').value),
+      }),
+    });
+    document.getElementById('alert-silence-feedback').textContent = `Silenced until ${result.endsAt}`;
+    await refreshAlertSilences();
+  } catch (error) {
+    document.getElementById('alert-silence-feedback').textContent = error.message;
+  }
+};
+
+document.getElementById('load-alert-snippet-error').onclick = () => {
+  const snippet = state.alertDslMetadata?.snippets?.[0]?.dsl;
+  if (snippet) document.getElementById('alert-dsl-input').value = snippet;
+};
+
+document.getElementById('load-alert-snippet-heartbeat').onclick = () => {
+  const snippet = state.alertDslMetadata?.snippets?.[1]?.dsl;
+  if (snippet) document.getElementById('alert-dsl-input').value = snippet;
 };
 
 document.getElementById('close-drawer').onclick = closeDrawer;
