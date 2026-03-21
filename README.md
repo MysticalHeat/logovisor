@@ -7,6 +7,7 @@
 - `apps/api` — NestJS master API
 - `agents` — Go-агент
 - `deploy/docker-compose.yml` — единый Docker Compose файл для всего стека
+- `deploy/docker-compose.agent.yml` — отдельный Docker Compose файл только для агента
 - `deploy/systemd` — systemd unit для агента
 - `deploy/packaging/deb` — заготовка под `.deb` пакет
 
@@ -152,6 +153,127 @@ docker compose --env-file .env -f deploy/docker-compose.yml down
 ```bash
 docker compose --env-file .env -f deploy/docker-compose.yml down -v
 ```
+
+## Установка агента
+
+Ниже — отдельная инструкция именно для установки агента на хост, где master API уже доступен отдельно.
+
+### Вариант 1. Установка агента через отдельный Docker Compose
+
+Если master API уже развернут отдельно, можно поднять только агента:
+
+### 1. Подготовить переменные
+
+Пример:
+
+```bash
+cp .env.example .env.agent
+```
+
+Минимально важно переопределить:
+
+```dotenv
+LOGOVISOR_MASTER_URL=https://hack.nomli-com.ru/api
+LOGOVISOR_BOOTSTRAP_TOKEN=your-bootstrap-token
+LOGOVISOR_AGENT_HOST_ID=my-host
+LOGOVISOR_HOST_LOG_DIR=/var/log
+LOGOVISOR_AGENT_LOG_FILENAME=syslog
+```
+
+Где взять bootstrap token:
+
+- создать через админку:
+  - `https://hack.nomli-com.ru/admin/`
+- или через API после логина:
+  - `POST /api/admin/enrollment-tokens`
+
+Если `journald` не нужен:
+
+```dotenv
+LOGOVISOR_ENABLE_JOURNALD=false
+```
+
+### 2. Запустить только агента
+
+```bash
+docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml up -d --build
+```
+
+### 3. Проверить логи агента
+
+```bash
+docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml logs -f agent
+```
+
+### 4. Остановить агент
+
+```bash
+docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml down
+```
+
+### Что делает агент после запуска
+
+После старта агент:
+
+1. использует `LOGOVISOR_BOOTSTRAP_TOKEN`
+2. делает enroll в master API
+3. получает runtime token
+4. начинает отправлять heartbeat и логи
+
+Runtime token вручную указывать не нужно — он выдаётся автоматически во время enroll.
+
+### Что нужно на хосте для file input
+
+Нужно, чтобы существовал файл или директория логов, которую вы монтируете в агент.
+
+Пример:
+
+```bash
+mkdir -p /var/log/my-app
+touch /var/log/my-app/app.log
+```
+
+И тогда в `.env.agent`:
+
+```dotenv
+LOGOVISOR_HOST_LOG_DIR=/var/log/my-app
+LOGOVISOR_AGENT_LOG_FILENAME=app.log
+```
+
+### Что нужно на хосте для journald
+
+Для `journald` compose уже монтирует:
+
+- `/var/log/journal`
+- `/run/log/journal`
+- `/etc/machine-id`
+
+Если journald на хосте не используется, лучше отключить его явно:
+
+```dotenv
+LOGOVISOR_ENABLE_JOURNALD=false
+```
+
+### Проверка установки агента
+
+Проверить контейнер:
+
+```bash
+docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml ps
+```
+
+Посмотреть логи:
+
+```bash
+docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml logs -f agent
+```
+
+Проверить, что агент появился на master:
+
+- открыть админку:
+  - `https://hack.nomli-com.ru/admin/`
+- или вызвать:
+  - `GET https://hack.nomli-com.ru/api/admin/agents`
 
 ## Важные переменные в `.env`
 
