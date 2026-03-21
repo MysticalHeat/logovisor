@@ -1,0 +1,25 @@
+# Which services to emulate
+services:
+  - nginx
+  - python_app
+  - syslog
+
+# Where to write logs
+output:
+  # Log files directory (in Docker — shared volume with Agent)
+  file_dir: /var/log/generated
+  # Send to journald (requires /run/systemd/journal/socket)
+  journald: true
+
+# Generation speed
+rate:
+  logs_per_second: 3
+
+# Anomaly settings
+anomaly:
+  # Enable auto-cycling (normal -> anomaly -> normal -> ...)
+  enabled: true
+  # Seconds of normal operation before anomaly
+  normal_duration: 120
+  # Seconds of anomaly duration
+  anomaly_duration: 30

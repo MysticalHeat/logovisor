@@ -102,6 +102,15 @@ services:
       timeout: 5s
       retries: 20
 
+  log-generator:
+    build:
+      context: ..
+      dockerfile: log-generator/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - generated-logs:/var/log/generated
+      - /run/systemd/journal/socket:/run/systemd/journal/socket
+
   agent:
     build:
       context: ..
@@ -111,11 +120,13 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      log-generator:
+        condition: service_started
     environment:
       LOGOVISOR_MASTER_URL: 'http://api:3000'
       LOGOVISOR_BOOTSTRAP_TOKEN: '${LOGOVISOR_ENROLLMENT_TOKEN:-logovisor-bootstrap-token}'
       LOGOVISOR_HOST_ID: '${LOGOVISOR_AGENT_HOST_ID:-docker-agent}'
-      LOGOVISOR_LOG_FILE_PATH: '/host-logs/${LOGOVISOR_AGENT_LOG_FILENAME:-logovisor-agent.log}'
+      LOGOVISOR_LOG_FILE_PATH: '/generated-logs/all.log'
       LOGOVISOR_DB_PATH: '/var/lib/logovisor/agent.db'
       LOGOVISOR_ENABLE_FILE_INPUT: '${LOGOVISOR_ENABLE_FILE_INPUT:-true}'
       LOGOVISOR_ENABLE_JOURNALD: '${LOGOVISOR_ENABLE_JOURNALD:-true}'
@@ -123,12 +134,7 @@ services:
       LOGOVISOR_FLUSH_INTERVAL_SECONDS: '${LOGOVISOR_FLUSH_INTERVAL_SECONDS:-5}'
       LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS: '${LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS:-30}'
     volumes:
-      - type: bind
-        source: '${LOGOVISOR_HOST_LOG_DIR:-/tmp}'
-        target: /host-logs
-        read_only: true
-        bind:
-          create_host_path: true
+      - generated-logs:/generated-logs:ro
       - type: bind
         source: /var/log/journal
         target: /var/log/journal
@@ -148,3 +154,4 @@ volumes:
   postgres-data:
   clickhouse-data:
   agent-data:
+  generated-logs:

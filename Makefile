@@ -1,23 +1,26 @@
 API_DIR=apps/api
 AGENT_DIR=agents
 AGENT_BIN=bin/logovisor-agent
+GENERATOR_DIR=log-generator
 
-.PHONY: help api-install api-dev api-build api-test api-lint agent-build agent-run agent-test smoke-test build test clean
+.PHONY: help api-install api-dev api-build api-test api-lint agent-build agent-run agent-test generator-run generator-test smoke-test build test clean
 
 help:
 	@printf "%s\n" \
-		"make api-install   Install root and API dependencies" \
-		"make api-dev       Run NestJS API in watch mode" \
-		"make api-build     Build NestJS API" \
-		"make api-test      Run NestJS tests" \
-		"make api-lint      Run NestJS lint" \
-		"make agent-build   Build Go agent binary" \
-		"make agent-run     Run Go agent" \
-		"make agent-test    Run Go tests" \
-		"make smoke-test    Run end-to-end smoke test" \
-		"make build         Build API and agent" \
-		"make test          Test API and agent" \
-		"make clean         Remove build artifacts"
+		"make api-install      Install root and API dependencies" \
+		"make api-dev          Run NestJS API in watch mode" \
+		"make api-build        Build NestJS API" \
+		"make api-test         Run NestJS tests" \
+		"make api-lint         Run NestJS lint" \
+		"make agent-build      Build Go agent binary" \
+		"make agent-run        Run Go agent" \
+		"make agent-test       Run Go tests" \
+		"make generator-run    Run log generator locally" \
+		"make generator-test   Test log generator templates" \
+		"make smoke-test       Run end-to-end smoke test" \
+		"make build            Build API and agent" \
+		"make test             Test API, agent, and generator" \
+		"make clean            Remove build artifacts"
 
 api-install:
 	npm install
@@ -44,12 +47,18 @@ agent-run:
 agent-test:
 	go -C ./$(AGENT_DIR) test ./...
 
+generator-run:
+	cd $(GENERATOR_DIR) && python3 generator.py --no-journald --file-dir /tmp/logovisor-logs
+
+generator-test:
+	cd $(GENERATOR_DIR) && python3 templates.py
+
 smoke-test:
 	bash ./deploy/smoke-test.sh
 
 build: api-build agent-build
 
-test: api-test agent-test
+test: api-test agent-test generator-test
 
 clean:
 	rm -rf bin

@@ -16,6 +16,8 @@
     "agent:run": "go -C ./agents run ./cmd/logovisor-agent",
     "agent:test": "go -C ./agents test ./...",
     "agent:fmt": "gofmt -w ./agents/cmd ./agents/internal",
+    "generator:run": "cd log-generator && python3 generator.py --no-journald --file-dir /tmp/logovisor-logs",
+    "generator:test": "cd log-generator && python3 templates.py",
     "smoke-test": "bash ./deploy/smoke-test.sh",
     "build": "npm run api:build && npm run agent:build",
     "test": "npm run api:test && npm run agent:test",
