@@ -14,3 +14,4 @@ agents/.env
 .env
 .env.local
 docs
+deploy/traefik/acme.json

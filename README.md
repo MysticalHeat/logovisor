@@ -16,6 +16,7 @@
 
 - `postgres` — хранение control-plane данных
 - `clickhouse` — хранение логов
+- `traefik` — reverse proxy с auto-issue TLS сертификата через Let's Encrypt
 - `api` — master API
 - `agent` — единый агент с file input и journald input
 
@@ -31,6 +32,9 @@
 
 ```bash
 cp .env.example .env
+mkdir -p deploy/traefik
+touch deploy/traefik/acme.json
+chmod 600 deploy/traefik/acme.json
 touch /tmp/logovisor-agent.log
 ```
 
@@ -40,7 +44,7 @@ touch /tmp/logovisor-agent.log
 LOGOVISOR_ENABLE_JOURNALD=false
 ```
 
-По умолчанию compose публикует наружу только API. PostgreSQL и ClickHouse остаются внутри docker-сети и не занимают порты на хосте.
+По умолчанию compose публикует наружу только Traefik на `80` и `443`. PostgreSQL и ClickHouse остаются внутри docker-сети и не занимают порты на хосте.
 
 Если хотите читать другой файл, поменяйте в `.env`:
 
@@ -57,6 +61,8 @@ docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
 
 Compose сам:
 
+- поднимет Traefik на 80 порту
+- поднимет Traefik на 443 порту
 - соберёт Docker image для `api`
 - соберёт Docker image для `agent`
 - поднимет PostgreSQL и ClickHouse
@@ -71,13 +77,38 @@ docker compose --env-file .env -f deploy/docker-compose.yml logs -f api
 docker compose --env-file .env -f deploy/docker-compose.yml logs -f agent
 ```
 
-API будет доступен на:
+API для локальной отладки будет доступен на:
 
 ```text
-http://localhost:13000/
+http://127.0.0.1:13000/
+```
+
+Если домен уже указывает на сервер, основной внешний адрес API будет:
+
+```text
+https://hack.nomli-com.ru/api
+```
+
+Домен берётся из переменной:
+
+```dotenv
+TRAEFIK_DOMAIN=hack.nomli-com.ru
+```
+
+Email для Let's Encrypt задаётся так:
+
+```dotenv
+TRAEFIK_ACME_EMAIL=admin@hack.nomli-com.ru
 ```
 
 Если вы меняли `API_PORT` в `.env`, используйте свой порт.
+
+Traefik автоматически:
+
+- выпускает сертификат через ACME HTTP challenge
+- продлевает сертификат
+- редиректит HTTP на HTTPS
+- удаляет префикс `/api` перед передачей запроса в backend API
 
 ### 4. Отправить тестовый лог из файла
 

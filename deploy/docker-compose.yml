@@ -1,4 +1,25 @@
 services:
+  traefik:
+    image: traefik:v3.0
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:-admin@hack.nomli-com.ru}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/acme.json:/letsencrypt/acme.json
+
   postgres:
     image: postgres:16
     restart: unless-stopped
@@ -53,7 +74,16 @@ services:
       CLICKHOUSE_URL: 'http://${CLICKHOUSE_USER:-logovisor}:${CLICKHOUSE_PASSWORD:-logovisor}@clickhouse:8123/'
       CLICKHOUSE_DATABASE: '${CLICKHOUSE_DATABASE:-default}'
     ports:
-      - '${API_BIND_ADDRESS:-0.0.0.0}:${API_PORT:-3000}:3000'
+      - '${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-13000}:3000'
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.logovisor-api.rule=Host(`${TRAEFIK_DOMAIN:-hack.nomli-com.ru}`) && PathPrefix(`/api`)'
+      - 'traefik.http.routers.logovisor-api.entrypoints=websecure'
+      - 'traefik.http.routers.logovisor-api.tls=true'
+      - 'traefik.http.routers.logovisor-api.tls.certresolver=letsencrypt'
+      - 'traefik.http.routers.logovisor-api.middlewares=logovisor-api-strip'
+      - 'traefik.http.middlewares.logovisor-api-strip.stripprefix.prefixes=/api'
+      - 'traefik.http.services.logovisor-api.loadbalancer.server.port=3000'
     healthcheck:
       test:
         [
