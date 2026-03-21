@@ -3,6 +3,7 @@ node_modules/
 apps/api/node_modules/
 apps/api/package-lock.json
 apps/api/dist/
+apps/admin/dist/
 apps/api/coverage/
 bin/
 *.db
@@ -15,3 +16,4 @@ agents/.env
 .env.local
 docs
 deploy/traefik/acme.json
+dists
