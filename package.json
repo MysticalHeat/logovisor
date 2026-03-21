@@ -1,0 +1,24 @@
+{
+  "name": "logovisor",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "api:build": "npm --workspace=api run build",
+    "api:start": "npm --workspace=api run start",
+    "api:start:dev": "npm --workspace=api run start:dev",
+    "api:lint": "npm --workspace=api run lint",
+    "api:test": "npm --workspace=api run test",
+    "agent:build": "mkdir -p ./bin && go -C ./agents build -o ../bin/logovisor-agent ./cmd/logovisor-agent",
+    "agent:run": "go -C ./agents run ./cmd/logovisor-agent",
+    "agent:test": "go -C ./agents test ./...",
+    "agent:fmt": "gofmt -w ./agents/cmd ./agents/internal",
+    "build": "npm run api:build && npm run agent:build",
+    "test": "npm run api:test && npm run agent:test",
+    "lint": "npm run api:lint",
+    "fmt": "npm run agent:fmt"
+  }
+}

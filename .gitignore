@@ -1,0 +1,7 @@
+.opencode
+node_modules/
+apps/api/node_modules/
+apps/api/package-lock.json
+apps/api/dist/
+apps/api/coverage/
+bin/
