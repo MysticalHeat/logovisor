@@ -77,11 +77,17 @@ services:
       - '${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-13000}:3000'
     labels:
       - 'traefik.enable=true'
+      - 'traefik.http.routers.logovisor-api-docs.rule=Host(`${TRAEFIK_DOMAIN:-hack.nomli-com.ru}`) && (Path(`/api/docs`) || PathPrefix(`/api/docs/`) || Path(`/api/docs-json`) || Path(`/api/docs-yaml`))'
+      - 'traefik.http.routers.logovisor-api-docs.entrypoints=websecure'
+      - 'traefik.http.routers.logovisor-api-docs.tls=true'
+      - 'traefik.http.routers.logovisor-api-docs.tls.certresolver=letsencrypt'
+      - 'traefik.http.routers.logovisor-api-docs.priority=200'
       - 'traefik.http.routers.logovisor-api.rule=Host(`${TRAEFIK_DOMAIN:-hack.nomli-com.ru}`) && PathPrefix(`/api`)'
       - 'traefik.http.routers.logovisor-api.entrypoints=websecure'
       - 'traefik.http.routers.logovisor-api.tls=true'
       - 'traefik.http.routers.logovisor-api.tls.certresolver=letsencrypt'
       - 'traefik.http.routers.logovisor-api.middlewares=logovisor-api-strip'
+      - 'traefik.http.routers.logovisor-api.priority=100'
       - 'traefik.http.middlewares.logovisor-api-strip.stripprefix.prefixes=/api'
       - 'traefik.http.services.logovisor-api.loadbalancer.server.port=3000'
     healthcheck:

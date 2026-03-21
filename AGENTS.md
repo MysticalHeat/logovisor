@@ -96,6 +96,7 @@
 - `@typescript-eslint/no-floating-promises` is a warning; explicitly `await` or intentionally discard with `void`.
 - `@typescript-eslint/no-explicit-any` is disabled, but use `any` only when a better type is impractical.
 - `sourceType` is configured as `commonjs`; follow existing project setup.
+- For public API endpoints, keep Swagger documentation accurate and explicit: request and response DTOs must fully describe the actual payload structure, and changes to endpoint shapes must update Swagger decorators accordingly.
 
 ## TypeScript imports
 - Put external imports first, then local relative imports.

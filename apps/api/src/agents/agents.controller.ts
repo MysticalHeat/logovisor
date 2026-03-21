@@ -6,6 +6,15 @@ import {
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiProperty,
+  ApiPropertyOptional,
+  ApiTags,
+} from '@nestjs/swagger';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as schema from '../database/schema';
@@ -24,51 +33,88 @@ import {
 } from '../shared/token.util';
 
 class EnrollDto {
+  @ApiProperty({ example: 'logovisor-bootstrap-token' })
   @IsString()
   @IsNotEmpty()
   bootstrapToken: string;
 
+  @ApiProperty({ example: 'docker-agent' })
   @IsString()
   @IsNotEmpty()
   hostId: string;
 
+  @ApiProperty({ example: 'install-123' })
   @IsString()
   @IsNotEmpty()
   installationId: string;
 
+  @ApiProperty({ example: 'hackathon-host-1' })
   @IsString()
   @IsNotEmpty()
   hostname: string;
 
+  @ApiProperty({ example: 'linux' })
   @IsString()
   @IsNotEmpty()
   os: string;
 }
 
 class HeartbeatDto {
+  @ApiPropertyOptional({ example: 'healthy' })
   @IsOptional()
   @IsString()
   health?: string;
 
+  @ApiPropertyOptional({ example: 3 })
   @IsOptional()
   @IsNumber()
   queueDepth?: number;
 
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    example: { sentBatches: 12 },
+  })
   @IsOptional()
   @IsObject()
   payload?: Record<string, unknown>;
 
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    example: { cpuPercent: 12.5, memoryMb: 128 },
+  })
   @IsOptional()
   @IsObject()
   system?: Record<string, unknown>;
 }
 
+class EnrollResponseDto {
+  @ApiProperty({ example: 'f2952c1b-bf34-4c8e-a729-df2ae254880e' })
+  agentId: string;
+
+  @ApiProperty({ example: 'agt_live_token' })
+  agentToken: string;
+}
+
+class StatusResponseDto {
+  @ApiProperty({ example: 'ok' })
+  status: string;
+}
+
 @Controller('agents')
+@ApiTags('agents')
 export class AgentsController {
   constructor(private readonly databaseService: DatabaseService) {}
 
   @Post('enroll')
   @HttpCode(200)
+  @ApiOperation({ summary: 'Enroll agent using bootstrap token' })
+  @ApiBody({ type: EnrollDto })
+  @ApiOkResponse({
+    description: 'Agent enrolled successfully.',
+    type: EnrollResponseDto,
+  })
   async enroll(@Body() enrollDto: EnrollDto): Promise<{
     agentId: string;
     agentToken: string;
@@ -136,6 +182,13 @@ export class AgentsController {
 
   @Post('heartbeat')
   @HttpCode(200)
+  @ApiBearerAuth('agent-bearer')
+  @ApiOperation({ summary: 'Submit agent heartbeat' })
+  @ApiBody({ type: HeartbeatDto })
+  @ApiOkResponse({
+    description: 'Heartbeat accepted.',
+    type: StatusResponseDto,
+  })
   async heartbeat(
     @Headers('authorization') authorizationHeader: string | undefined,
     @Body() heartbeatDto: HeartbeatDto,

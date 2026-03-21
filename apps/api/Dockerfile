@@ -19,7 +19,8 @@ ENV HOST=0.0.0.0
 
 WORKDIR /app
 
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /app/apps/api/node_modules /app/node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 

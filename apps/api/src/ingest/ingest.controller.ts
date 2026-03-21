@@ -7,6 +7,15 @@ import {
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiProperty,
+  ApiPropertyOptional,
+  ApiTags,
+} from '@nestjs/swagger';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Type } from 'class-transformer';
 import {
@@ -25,48 +34,63 @@ import { DatabaseService } from '../database/database.service';
 import { extractBearerToken, hashToken } from '../shared/token.util';
 
 class IngestEventDto {
+  @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsNumber()
   schema_version?: number;
 
+  @ApiPropertyOptional({ example: 'agent-123' })
   @IsOptional()
   @IsString()
   agent_id?: string;
 
+  @ApiPropertyOptional({ example: 'docker-agent' })
   @IsOptional()
   @IsString()
   host_id?: string;
 
+  @ApiPropertyOptional({ example: 'file' })
   @IsOptional()
   @IsString()
   source_type?: string;
 
+  @ApiProperty({ example: 'hello from logovisor' })
   @IsString()
   @IsNotEmpty()
   message: string;
 
+  @ApiPropertyOptional({ example: 'evt_123' })
   @IsOptional()
   @IsString()
   event_id?: string;
 
+  @ApiPropertyOptional({ example: '2026-03-21T10:00:00.000Z' })
   @IsOptional()
   @IsString()
   timestamp?: string;
 
+  @ApiPropertyOptional({ example: '2026-03-21T10:00:01.000Z' })
   @IsOptional()
   @IsString()
   observed_at?: string;
 
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    example: { path: '/tmp/logovisor-agent.log', offset: 42 },
+  })
   @IsOptional()
   @IsObject()
   source?: Record<string, unknown>;
 }
 
 class LogIngestDto {
+  @ApiProperty({ example: 'batch-123' })
   @IsString()
   @IsNotEmpty()
   batchId: string;
 
+  @ApiProperty({ type: [IngestEventDto] })
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })
@@ -74,7 +98,19 @@ class LogIngestDto {
   events: IngestEventDto[];
 }
 
+class LogIngestResponseDto {
+  @ApiProperty({ example: 'batch-123' })
+  batchId: string;
+
+  @ApiProperty({ example: true })
+  accepted: boolean;
+
+  @ApiProperty({ example: 2 })
+  receivedEvents: number;
+}
+
 @Controller('ingest')
+@ApiTags('ingest')
 export class IngestController {
   constructor(
     private readonly databaseService: DatabaseService,
@@ -83,6 +119,13 @@ export class IngestController {
 
   @Post('logs')
   @HttpCode(200)
+  @ApiBearerAuth('agent-bearer')
+  @ApiOperation({ summary: 'Ingest log batch from agent' })
+  @ApiBody({ type: LogIngestDto })
+  @ApiOkResponse({
+    description: 'Log batch accepted.',
+    type: LogIngestResponseDto,
+  })
   async ingest(
     @Headers('authorization') authorizationHeader: string | undefined,
     @Headers('content-encoding') contentEncoding: string | undefined,

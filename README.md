@@ -89,6 +89,12 @@ http://127.0.0.1:13000/
 https://hack.nomli-com.ru/api
 ```
 
+Swagger UI будет доступен по адресу:
+
+```text
+https://hack.nomli-com.ru/api/docs
+```
+
 Домен берётся из переменной:
 
 ```dotenv
