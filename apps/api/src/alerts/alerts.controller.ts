@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Patch,
   Param,
   Post,
@@ -491,6 +492,7 @@ export class AlertsController {
   }
 
   @Post('telegram/integrations')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Create Telegram integration' })
   @ApiOkResponse({
     description: 'Telegram integration created.',
@@ -531,6 +533,7 @@ export class AlertsController {
   }
 
   @Post('telegram/integrations/:id/test')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Send Telegram test message' })
   @ApiOkResponse({
     description: 'Telegram test sent.',
@@ -556,6 +559,7 @@ export class AlertsController {
   }
 
   @Post('rules')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Create alert rule from DSL' })
   @ApiOkResponse({
     description: 'Alert rule created.',
@@ -591,6 +595,7 @@ export class AlertsController {
   }
 
   @Post('parse')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Parse and validate alert DSL' })
   @ApiOkResponse({
     description: 'DSL validation result returned.',
@@ -637,6 +642,7 @@ export class AlertsController {
   }
 
   @Post('preview')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Preview alert rule on recent data' })
   @ApiOkResponse({
     description: 'Alert preview returned.',
@@ -648,6 +654,7 @@ export class AlertsController {
   }
 
   @Post('incidents/:id/resolve')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Resolve alert incident' })
   @ApiOkResponse({
     description: 'Alert incident resolved.',
@@ -659,6 +666,7 @@ export class AlertsController {
   }
 
   @Post('incidents/:id/ack')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Acknowledge alert incident' })
   @ApiOkResponse({
     description: 'Alert incident acknowledged.',
@@ -673,6 +681,7 @@ export class AlertsController {
   }
 
   @Post('incidents/:id/silence')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Create silence from incident' })
   @ApiOkResponse({
     description: 'Alert incident silenced.',
@@ -699,6 +708,7 @@ export class AlertsController {
   }
 
   @Post('silences')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Create alert silence' })
   @ApiOkResponse({
     description: 'Alert silence created.',
@@ -712,6 +722,7 @@ export class AlertsController {
   }
 
   @Post('silences/:id/cancel')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Cancel alert silence' })
   @ApiOkResponse({
     description: 'Alert silence cancelled.',

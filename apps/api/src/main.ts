@@ -59,7 +59,7 @@ async function bootstrap() {
       type: 'apiKey',
       in: 'cookie',
       name: 'logovisor_operator_session',
-    })
+    }, 'operator-session')
     .addBearerAuth(
       {
         type: 'http',

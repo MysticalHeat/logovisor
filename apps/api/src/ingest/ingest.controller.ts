@@ -35,6 +35,7 @@ import { DatabaseService } from '../database/database.service';
 import { MonitoringService } from '../monitoring/monitoring.service';
 import { ApiStandardErrorResponses } from '../shared/error-response';
 import { extractBearerToken, hashToken } from '../shared/token.util';
+import { LogStreamService } from '../admin/log-stream.service';
 
 class IngestEventDto {
   @ApiPropertyOptional({ example: 1 })
@@ -124,6 +125,7 @@ export class IngestController {
     private readonly databaseService: DatabaseService,
     private readonly clickhouseService: ClickhouseService,
     private readonly monitoringService: MonitoringService,
+    private readonly logStreamService: LogStreamService,
   ) {}
 
   @Post('logs')
@@ -187,12 +189,13 @@ export class IngestController {
       throw new UnauthorizedException('Invalid agent token');
     }
 
-    await this.clickhouseService.writeLogs(
-      ingestDto.events.map((event) => ({
-        ...event,
-        agentId: tokenRecord.agentId,
-      })),
-    );
+    const normalizedEvents = ingestDto.events.map((event) => ({
+      ...event,
+      agentId: tokenRecord.agentId,
+    }));
+
+    await this.clickhouseService.writeLogs(normalizedEvents);
+    this.logStreamService.publishBatch(normalizedEvents);
 
     this.monitoringService.recordIngestBatch(ingestDto.events.length);
 

@@ -81,7 +81,12 @@
         <section id="section-logs" class="section">
           <div class="panel controls-grid logs-grid">
             <label><span class="muted">Query</span><input id="logs-query" placeholder="error, timeout, kernel" /></label>
-            <label><span class="muted">Host ID</span><input id="logs-host-id" placeholder="hackathon2" /></label>
+            <label>
+              <span class="muted">Host ID</span>
+              <select id="logs-host-id">
+                <option value="">all hosts</option>
+              </select>
+            </label>
             <label><span class="muted">Agent ID</span><input id="logs-agent-id" placeholder="agent uuid" /></label>
             <label>
               <span class="muted">Source type</span>
@@ -104,9 +109,13 @@
             <label><span class="muted">From</span><input id="logs-from" placeholder="2026-03-21T00:00:00.000Z" /></label>
             <label><span class="muted">To</span><input id="logs-to" placeholder="2026-03-22T00:00:00.000Z" /></label>
             <button id="search-logs" class="primary">Search</button>
+            <button id="toggle-live-logs" class="ghost">Go live</button>
+            <button id="pause-live-logs" class="ghost">Pause</button>
+            <button id="clear-live-logs" class="ghost">Clear</button>
           </div>
           <div class="panel">
             <h3>Log search results</h3>
+            <div id="logs-live-status" class="muted top-gap"></div>
             <div id="logs-output"></div>
             <div class="row-actions top-gap">
               <button id="load-more-logs" class="ghost hidden">Load more</button>

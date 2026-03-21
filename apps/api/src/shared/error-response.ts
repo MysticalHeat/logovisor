@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import {
+  ApiProperty,
   ApiBadRequestResponse,
   ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
@@ -15,14 +16,27 @@ import {
 import { applyDecorators } from '@nestjs/common';
 
 export class ErrorDetailsDto {
+  @ApiProperty({ example: 'bad_request' })
   code: string;
+
+  @ApiProperty({ example: 400 })
   statusCode: number;
+
+  @ApiProperty({
+    example: 'from must be earlier than to',
+    oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+  })
   message: string | string[];
+
+  @ApiProperty({ example: '/api/admin/logs/search' })
   path: string;
+
+  @ApiProperty({ example: '2026-03-22T12:00:00.000Z' })
   timestamp: string;
 }
 
 export class ErrorResponseDto {
+  @ApiProperty({ type: ErrorDetailsDto })
   error: ErrorDetailsDto;
 }
 

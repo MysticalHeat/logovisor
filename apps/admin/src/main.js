@@ -9,6 +9,11 @@ const state = {
   enrollmentTokens: [],
   logs: [],
   logsCursor: null,
+  highlightedLogIds: new Set(),
+  liveLogsEnabled: false,
+  liveLogsSource: null,
+  liveLogsConnected: false,
+  liveLogsPaused: false,
   alertIntegrations: [],
   alertRules: [],
   alertDslMetadata: null,
@@ -274,8 +279,26 @@ async function refreshAgents() {
     await refreshAgentTokens(state.selectedAgentId);
   }
 
+  renderLogsHostSelector();
   renderAnalyticsAgentSelector();
   renderFleet();
+}
+
+function renderLogsHostSelector() {
+  const select = document.getElementById('logs-host-id');
+  if (!select) {
+    return;
+  }
+
+  const currentValue = select.value;
+  const hostIds = [...new Set(Array.from(state.agentDetails.values()).map((detail) => detail.hostId))].sort();
+  select.innerHTML = `<option value="">all hosts</option>${hostIds
+    .map((hostId) => `<option value="${escapeHtml(hostId)}">${escapeHtml(hostId)}</option>`)
+    .join('')}`;
+
+  if (currentValue && hostIds.includes(currentValue)) {
+    select.value = currentValue;
+  }
 }
 
 function renderAnalyticsAgentSelector() {
@@ -515,6 +538,17 @@ async function runLogSearch(resetCursor = true) {
 }
 
 function renderLogs() {
+  document.getElementById('logs-live-status').textContent = state.liveLogsEnabled
+    ? state.liveLogsConnected
+      ? state.liveLogsPaused
+        ? 'Live streaming paused'
+        : 'Live streaming connected'
+      : 'Connecting to live stream…'
+    : '';
+  document.getElementById('toggle-live-logs').textContent = state.liveLogsEnabled ? 'Stop live' : 'Go live';
+  document.getElementById('pause-live-logs').textContent = state.liveLogsPaused ? 'Resume' : 'Pause';
+  document.getElementById('pause-live-logs').disabled = !state.liveLogsEnabled;
+
   document.getElementById('logs-output').innerHTML = state.logs.length
     ? `
       <table>
@@ -530,7 +564,7 @@ function renderLogs() {
         <tbody>
           ${state.logs
             .map((row) => `
-              <tr>
+              <tr class="${state.highlightedLogIds.has(row.eventId) ? 'log-row-highlight' : ''}">
                 <td>${escapeHtml(formatDate(row.timestamp))}</td>
                 <td><code>${escapeHtml(row.hostId)}</code></td>
                 <td>${escapeHtml(row.sourceType)}</td>
@@ -549,6 +583,104 @@ function renderLogs() {
     : '<div class="empty">No log events loaded yet.</div>';
 
   document.getElementById('load-more-logs').classList.toggle('hidden', !state.logsCursor);
+}
+
+function currentLiveLogQuery() {
+  const params = new URLSearchParams();
+  const pairs = [
+    ['query', document.getElementById('logs-query').value.trim()],
+    ['hostId', document.getElementById('logs-host-id').value.trim()],
+    ['agentId', document.getElementById('logs-agent-id').value.trim()],
+    ['sourceType', document.getElementById('logs-source-type').value],
+    ['level', document.getElementById('logs-level').value],
+    ['from', document.getElementById('logs-from').value.trim()],
+    ['to', document.getElementById('logs-to').value.trim()],
+  ];
+
+  pairs.forEach(([key, value]) => {
+    if (value) {
+      params.set(key, value);
+    }
+  });
+
+  return params.toString();
+}
+
+function stopLiveLogs() {
+  state.liveLogsEnabled = false;
+  state.liveLogsConnected = false;
+  state.liveLogsPaused = false;
+  if (state.liveLogsSource) {
+    state.liveLogsSource.close();
+    state.liveLogsSource = null;
+  }
+  renderLogs();
+}
+
+function startLiveLogs() {
+  stopLiveLogs();
+  state.liveLogsEnabled = true;
+  state.liveLogsPaused = false;
+
+  const query = currentLiveLogQuery();
+  const source = new EventSource(`/api/admin/logs/stream${query ? `?${query}` : ''}`, {
+    withCredentials: true,
+  });
+
+  source.addEventListener('connected', () => {
+    state.liveLogsConnected = true;
+    renderLogs();
+  });
+
+  source.addEventListener('heartbeat', () => {
+    state.liveLogsConnected = true;
+    renderLogs();
+  });
+
+  source.addEventListener('log', (event) => {
+    state.liveLogsConnected = true;
+    if (state.liveLogsPaused) {
+      renderLogs();
+      return;
+    }
+    const row = JSON.parse(event.data);
+    state.highlightedLogIds.add(row.eventId);
+    state.logs = [row, ...state.logs].slice(0, 300);
+    renderLogs();
+    window.setTimeout(() => {
+      state.highlightedLogIds.delete(row.eventId);
+      renderLogs();
+    }, 2600);
+  });
+
+  source.onerror = () => {
+    state.liveLogsConnected = false;
+    renderLogs();
+  };
+
+  state.liveLogsSource = source;
+  renderLogs();
+}
+
+function toggleLiveLogs() {
+  if (state.liveLogsEnabled) {
+    stopLiveLogs();
+    return;
+  }
+
+  state.logs = [];
+  state.logsCursor = null;
+  state.highlightedLogIds.clear();
+  startLiveLogs();
+}
+
+function togglePauseLiveLogs() {
+  if (!state.liveLogsEnabled) {
+    return;
+  }
+
+  state.liveLogsPaused = !state.liveLogsPaused;
+  renderLogs();
 }
 
 function renderBar(value, max) {
@@ -1583,20 +1715,30 @@ document.getElementById('login-button').onclick = async () => {
 };
 
 document.getElementById('logout-button').onclick = async () => {
+  stopLiveLogs();
   await api('/auth/logout', { method: 'POST' });
   loginShell.classList.remove('hidden');
   appShell.classList.add('hidden');
 };
 
 document.querySelectorAll('.nav-item').forEach((button) => {
-  button.onclick = () => setSection(button.dataset.section);
+  button.onclick = () => {
+    if (button.dataset.section !== 'logs') {
+      stopLiveLogs();
+    }
+    setSection(button.dataset.section);
+  };
 });
 
 document.getElementById('refresh-button').onclick = async () => {
   if (state.activeSection === 'fleet') {
     await refreshAgents();
   } else if (state.activeSection === 'logs') {
-    await runLogSearch(true);
+    if (state.liveLogsEnabled) {
+      startLiveLogs();
+    } else {
+      await runLogSearch(true);
+    }
   } else if (state.activeSection === 'analytics') {
     await refreshAnalytics();
   } else if (state.activeSection === 'alerts') {
@@ -1618,7 +1760,23 @@ document.getElementById('apply-agent-filters').onclick = async () => {
 };
 
 document.getElementById('search-logs').onclick = async () => {
+  stopLiveLogs();
   await runLogSearch(true);
+};
+
+document.getElementById('toggle-live-logs').onclick = async () => {
+  toggleLiveLogs();
+};
+
+document.getElementById('pause-live-logs').onclick = () => {
+  togglePauseLiveLogs();
+};
+
+document.getElementById('clear-live-logs').onclick = () => {
+  state.logs = [];
+  state.logsCursor = null;
+  state.highlightedLogIds.clear();
+  renderLogs();
 };
 
 document.getElementById('apply-analytics-filters').onclick = async () => {

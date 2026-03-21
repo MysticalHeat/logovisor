@@ -1,26 +1,32 @@
 import {
   BadRequestException,
   Controller,
+  HttpCode,
+  MessageEvent,
   Get,
   NotFoundException,
   Param,
   Post,
   Query,
+  Sse,
   UseGuards,
   Body,
 } from '@nestjs/common';
 import {
   ApiCookieAuth,
+  ApiExtraModels,
   ApiOkResponse,
   ApiOperation,
   ApiProperty,
   ApiPropertyOptional,
   ApiTags,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { randomUUID } from 'node:crypto';
+import { Observable, merge, of, interval, map, filter } from 'rxjs';
 import { OperatorAuthGuard } from '../auth/operator-auth.guard';
 import { ClickhouseService } from '../clickhouse/clickhouse.service';
 import { DatabaseService } from '../database/database.service';
@@ -28,6 +34,7 @@ import { MonitoringService } from '../monitoring/monitoring.service';
 import { ApiStandardErrorResponses } from '../shared/error-response';
 import { createOpaqueToken, hashToken } from '../shared/token.util';
 import * as schema from '../database/schema';
+import { LogStreamService, type LogStreamFilters } from './log-stream.service';
 
 class AgentListQueryDto {
   @ApiPropertyOptional({ example: 'docker-agent' })
@@ -345,15 +352,47 @@ class EnrollmentTokenCreateResponseDto extends EnrollmentTokenSummaryDto {
   token: string;
 }
 
+class LogStreamConnectedDto {
+  @ApiProperty({ example: true })
+  ok: boolean;
+
+  @ApiProperty({
+    example: { level: 'error', hostId: 'docker-agent' },
+    additionalProperties: true,
+  })
+  filters: Record<string, string>;
+}
+
+class LogStreamHeartbeatDto {
+  @ApiProperty({ example: '2026-03-22T12:00:00.000Z' })
+  at: string;
+}
+
+class LogStreamSseEnvelopeDto {
+  @ApiProperty({ example: 'log', enum: ['connected', 'log', 'heartbeat'] })
+  type: string;
+
+  @ApiProperty({
+    oneOf: [
+      { $ref: getSchemaPath(LogStreamConnectedDto) },
+      { $ref: getSchemaPath(LogEventDto) },
+      { $ref: getSchemaPath(LogStreamHeartbeatDto) },
+    ],
+  })
+  data: LogStreamConnectedDto | LogEventDto | LogStreamHeartbeatDto;
+}
+
 @Controller('admin')
 @ApiTags('admin')
 @ApiCookieAuth('operator-session')
 @UseGuards(OperatorAuthGuard)
+@ApiExtraModels(LogStreamConnectedDto, LogStreamHeartbeatDto, LogStreamSseEnvelopeDto)
 export class AdminController {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly clickhouseService: ClickhouseService,
     private readonly monitoringService: MonitoringService,
+    private readonly logStreamService: LogStreamService,
   ) {}
 
   @Get('agents')
@@ -458,6 +497,7 @@ export class AdminController {
   }
 
   @Post('agents/:id/tokens/:tokenId/revoke')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Revoke runtime agent token' })
   @ApiOkResponse({ type: AgentTokenSummaryDto })
   @ApiStandardErrorResponses(401, 404)
@@ -521,6 +561,7 @@ export class AdminController {
   }
 
   @Post('enrollment-tokens')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Create single-use enrollment token' })
   @ApiOkResponse({ type: EnrollmentTokenCreateResponseDto })
   @ApiStandardErrorResponses(400, 401)
@@ -553,6 +594,7 @@ export class AdminController {
   }
 
   @Post('enrollment-tokens/:id/revoke')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Revoke enrollment token' })
   @ApiOkResponse({ type: EnrollmentTokenSummaryDto })
   @ApiStandardErrorResponses(401, 404)
@@ -637,6 +679,59 @@ export class AdminController {
         : undefined;
 
     return { items, count: items.length, nextCursor };
+  }
+
+  @Sse('logs/stream')
+  @ApiOperation({ summary: 'Stream ingested logs in real time via SSE' })
+  @ApiOkResponse({
+    description: 'Server-sent events envelope for live log streaming.',
+    schema: { $ref: getSchemaPath(LogStreamSseEnvelopeDto) },
+  })
+  @ApiStandardErrorResponses(400, 401)
+  streamLogs(@Query() query: LogSearchQueryDto): Observable<MessageEvent> {
+    const from = parseIsoDate(query.from, 'from');
+    const to = parseIsoDate(query.to, 'to');
+    if (from && to && from > to) {
+      throw new BadRequestException('from must be earlier than to');
+    }
+
+    const filters: LogStreamFilters = {
+      agentId: query.agentId,
+      hostId: query.hostId,
+      sourceType: query.sourceType,
+      level: query.level,
+      query: query.query,
+    };
+
+    const connected$ = of(
+      {
+        type: 'connected',
+        data: { ok: true, filters },
+      } satisfies MessageEvent,
+    );
+
+    const logs$ = this.logStreamService.events$.pipe(
+      filter((event) => this.logStreamService.matchesFilters(event, filters)),
+      map(
+        (event) =>
+          ({
+            type: 'log',
+            data: event,
+          }) satisfies MessageEvent,
+      ),
+    );
+
+    const heartbeat$ = interval(15000).pipe(
+      map(
+        () =>
+          ({
+            type: 'heartbeat',
+            data: { at: new Date().toISOString() },
+          }) satisfies MessageEvent,
+      ),
+    );
+
+    return merge(connected$, logs$, heartbeat$);
   }
 }
 
