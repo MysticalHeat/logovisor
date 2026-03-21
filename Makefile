@@ -2,7 +2,7 @@ API_DIR=apps/api
 AGENT_DIR=agents
 AGENT_BIN=bin/logovisor-agent
 
-.PHONY: help api-install api-dev api-build api-test api-lint agent-build agent-run agent-test build test clean
+.PHONY: help api-install api-dev api-build api-test api-lint agent-build agent-run agent-test smoke-test build test clean
 
 help:
 	@printf "%s\n" \
@@ -14,6 +14,7 @@ help:
 		"make agent-build   Build Go agent binary" \
 		"make agent-run     Run Go agent" \
 		"make agent-test    Run Go tests" \
+		"make smoke-test    Run end-to-end smoke test" \
 		"make build         Build API and agent" \
 		"make test          Test API and agent" \
 		"make clean         Remove build artifacts"
@@ -42,6 +43,9 @@ agent-run:
 
 agent-test:
 	go -C ./$(AGENT_DIR) test ./...
+
+smoke-test:
+	bash ./deploy/smoke-test.sh
 
 build: api-build agent-build
 

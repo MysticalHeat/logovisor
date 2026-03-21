@@ -5,3 +5,12 @@ apps/api/package-lock.json
 apps/api/dist/
 apps/api/coverage/
 bin/
+*.db
+*.sqlite
+agents/logovisor-agent
+apps/api/.env
+apps/api/.env.local
+agents/.env
+.env
+.env.local
+docs

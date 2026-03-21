@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: '${POSTGRES_DB:-logovisor}'
+      POSTGRES_USER: '${POSTGRES_USER:-logovisor}'
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:-logovisor}'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: '${CLICKHOUSE_USER:-logovisor}'
+      CLICKHOUSE_PASSWORD: '${CLICKHOUSE_PASSWORD:-logovisor}'
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1"',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      PORT: '3000'
+      HOST: '0.0.0.0'
+      DATABASE_URL: 'postgres://${POSTGRES_USER:-logovisor}:${POSTGRES_PASSWORD:-logovisor}@postgres:5432/${POSTGRES_DB:-logovisor}'
+      LOGOVISOR_ENROLLMENT_TOKEN: '${LOGOVISOR_ENROLLMENT_TOKEN:-logovisor-bootstrap-token}'
+      LOGOVISOR_ENROLLMENT_TOKEN_TTL_MINUTES: '${LOGOVISOR_ENROLLMENT_TOKEN_TTL_MINUTES:-60}'
+      CLICKHOUSE_URL: 'http://${CLICKHOUSE_USER:-logovisor}:${CLICKHOUSE_PASSWORD:-logovisor}@clickhouse:8123/'
+      CLICKHOUSE_DATABASE: '${CLICKHOUSE_DATABASE:-default}'
+    ports:
+      - '${API_BIND_ADDRESS:-0.0.0.0}:${API_PORT:-3000}:3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  agent:
+    build:
+      context: ..
+      dockerfile: agents/Dockerfile
+    restart: unless-stopped
+    user: '0:0'
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      LOGOVISOR_MASTER_URL: 'http://api:3000'
+      LOGOVISOR_BOOTSTRAP_TOKEN: '${LOGOVISOR_ENROLLMENT_TOKEN:-logovisor-bootstrap-token}'
+      LOGOVISOR_HOST_ID: '${LOGOVISOR_AGENT_HOST_ID:-docker-agent}'
+      LOGOVISOR_LOG_FILE_PATH: '/host-logs/${LOGOVISOR_AGENT_LOG_FILENAME:-logovisor-agent.log}'
+      LOGOVISOR_DB_PATH: '/var/lib/logovisor/agent.db'
+      LOGOVISOR_ENABLE_FILE_INPUT: '${LOGOVISOR_ENABLE_FILE_INPUT:-true}'
+      LOGOVISOR_ENABLE_JOURNALD: '${LOGOVISOR_ENABLE_JOURNALD:-true}'
+      LOGOVISOR_JOURNALD_UNITS: '${LOGOVISOR_JOURNALD_UNITS:-}'
+      LOGOVISOR_FLUSH_INTERVAL_SECONDS: '${LOGOVISOR_FLUSH_INTERVAL_SECONDS:-5}'
+      LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS: '${LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS:-30}'
+    volumes:
+      - type: bind
+        source: '${LOGOVISOR_HOST_LOG_DIR:-/tmp}'
+        target: /host-logs
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /var/log/journal
+        target: /var/log/journal
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /run/log/journal
+        target: /run/log/journal
+        read_only: true
+        bind:
+          create_host_path: true
+      - '/etc/machine-id:/etc/machine-id:ro'
+      - agent-data:/var/lib/logovisor
+
+volumes:
+  postgres-data:
+  clickhouse-data:
+  agent-data:

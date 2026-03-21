@@ -16,6 +16,7 @@
     "agent:run": "go -C ./agents run ./cmd/logovisor-agent",
     "agent:test": "go -C ./agents test ./...",
     "agent:fmt": "gofmt -w ./agents/cmd ./agents/internal",
+    "smoke-test": "bash ./deploy/smoke-test.sh",
     "build": "npm run api:build && npm run agent:build",
     "test": "npm run api:test && npm run agent:test",
     "lint": "npm run api:lint",
