@@ -10,6 +10,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiProperty,
@@ -31,6 +32,8 @@ import {
 import * as schema from '../database/schema';
 import { ClickhouseService } from '../clickhouse/clickhouse.service';
 import { DatabaseService } from '../database/database.service';
+import { MonitoringService } from '../monitoring/monitoring.service';
+import { ApiStandardErrorResponses } from '../shared/error-response';
 import { extractBearerToken, hashToken } from '../shared/token.util';
 
 class IngestEventDto {
@@ -115,13 +118,25 @@ export class IngestController {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly clickhouseService: ClickhouseService,
+    private readonly monitoringService: MonitoringService,
   ) {}
 
   @Post('logs')
   @HttpCode(200)
   @ApiBearerAuth('agent-bearer')
+  @ApiHeader({
+    name: 'Authorization',
+    required: true,
+    description: 'Bearer runtime token issued during enrollment.',
+  })
+  @ApiHeader({
+    name: 'Content-Encoding',
+    required: false,
+    description: 'Batch encoding. Supported values: gzip, identity.',
+  })
   @ApiOperation({ summary: 'Ingest log batch from agent' })
   @ApiBody({ type: LogIngestDto })
+  @ApiStandardErrorResponses(400, 401)
   @ApiOkResponse({
     description: 'Log batch accepted.',
     type: LogIngestResponseDto,
@@ -173,6 +188,8 @@ export class IngestController {
         agentId: tokenRecord.agentId,
       })),
     );
+
+    this.monitoringService.recordIngestBatch(ingestDto.events.length);
 
     return {
       batchId: ingestDto.batchId,

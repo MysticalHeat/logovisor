@@ -71,24 +71,31 @@ services:
       DATABASE_URL: 'postgres://${POSTGRES_USER:-logovisor}:${POSTGRES_PASSWORD:-logovisor}@postgres:5432/${POSTGRES_DB:-logovisor}'
       LOGOVISOR_ENROLLMENT_TOKEN: '${LOGOVISOR_ENROLLMENT_TOKEN:-logovisor-bootstrap-token}'
       LOGOVISOR_ENROLLMENT_TOKEN_TTL_MINUTES: '${LOGOVISOR_ENROLLMENT_TOKEN_TTL_MINUTES:-60}'
+      LOGOVISOR_OPERATOR_USERNAME: '${LOGOVISOR_OPERATOR_USERNAME:-admin}'
+      LOGOVISOR_OPERATOR_PASSWORD: '${LOGOVISOR_OPERATOR_PASSWORD:-change-me}'
+      LOGOVISOR_OPERATOR_JWT_SECRET: '${LOGOVISOR_OPERATOR_JWT_SECRET:-change-me-jwt-secret}'
+      LOGOVISOR_OPERATOR_JWT_EXPIRES_IN_SECONDS: '${LOGOVISOR_OPERATOR_JWT_EXPIRES_IN_SECONDS:-28800}'
+      LOGOVISOR_OPERATOR_COOKIE_SECURE: '${LOGOVISOR_OPERATOR_COOKIE_SECURE:-true}'
+      LOGOVISOR_LOG_RETENTION_DAYS: '${LOGOVISOR_LOG_RETENTION_DAYS:-30}'
+      LOGOVISOR_HEARTBEAT_RETENTION_DAYS: '${LOGOVISOR_HEARTBEAT_RETENTION_DAYS:-7}'
+      LOGOVISOR_TOKEN_RETENTION_DAYS: '${LOGOVISOR_TOKEN_RETENTION_DAYS:-7}'
+      LOGOVISOR_HOUSEKEEPING_INTERVAL_SECONDS: '${LOGOVISOR_HOUSEKEEPING_INTERVAL_SECONDS:-3600}'
       CLICKHOUSE_URL: 'http://${CLICKHOUSE_USER:-logovisor}:${CLICKHOUSE_PASSWORD:-logovisor}@clickhouse:8123/'
       CLICKHOUSE_DATABASE: '${CLICKHOUSE_DATABASE:-default}'
     ports:
       - '${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-13000}:3000'
     labels:
       - 'traefik.enable=true'
-      - 'traefik.http.routers.logovisor-api-docs.rule=Host(`${TRAEFIK_DOMAIN:-hack.nomli-com.ru}`) && (Path(`/api/docs`) || PathPrefix(`/api/docs/`) || Path(`/api/docs-json`) || Path(`/api/docs-yaml`))'
-      - 'traefik.http.routers.logovisor-api-docs.entrypoints=websecure'
-      - 'traefik.http.routers.logovisor-api-docs.tls=true'
-      - 'traefik.http.routers.logovisor-api-docs.tls.certresolver=letsencrypt'
-      - 'traefik.http.routers.logovisor-api-docs.priority=200'
       - 'traefik.http.routers.logovisor-api.rule=Host(`${TRAEFIK_DOMAIN:-hack.nomli-com.ru}`) && PathPrefix(`/api`)'
       - 'traefik.http.routers.logovisor-api.entrypoints=websecure'
       - 'traefik.http.routers.logovisor-api.tls=true'
       - 'traefik.http.routers.logovisor-api.tls.certresolver=letsencrypt'
-      - 'traefik.http.routers.logovisor-api.middlewares=logovisor-api-strip'
       - 'traefik.http.routers.logovisor-api.priority=100'
-      - 'traefik.http.middlewares.logovisor-api-strip.stripprefix.prefixes=/api'
+      - 'traefik.http.routers.logovisor-admin-ui.rule=Host(`${TRAEFIK_DOMAIN:-hack.nomli-com.ru}`) && PathPrefix(`/admin`)'
+      - 'traefik.http.routers.logovisor-admin-ui.entrypoints=websecure'
+      - 'traefik.http.routers.logovisor-admin-ui.tls=true'
+      - 'traefik.http.routers.logovisor-admin-ui.tls.certresolver=letsencrypt'
+      - 'traefik.http.routers.logovisor-admin-ui.priority=90'
       - 'traefik.http.services.logovisor-api.loadbalancer.server.port=3000'
     healthcheck:
       test:
@@ -96,7 +103,7 @@ services:
           'CMD',
           'node',
           '-e',
-          "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+          "fetch('http://127.0.0.1:3000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
         ]
       interval: 5s
       timeout: 5s
@@ -123,7 +130,7 @@ services:
       log-generator:
         condition: service_started
     environment:
-      LOGOVISOR_MASTER_URL: 'http://api:3000'
+      LOGOVISOR_MASTER_URL: 'http://api:3000/api'
       LOGOVISOR_BOOTSTRAP_TOKEN: '${LOGOVISOR_ENROLLMENT_TOKEN:-logovisor-bootstrap-token}'
       LOGOVISOR_HOST_ID: '${LOGOVISOR_AGENT_HOST_ID:-docker-agent}'
       LOGOVISOR_LOG_FILE_PATH: '/generated-logs/all.log'

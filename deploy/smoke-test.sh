@@ -12,14 +12,14 @@ KEEP_SMOKE_ENV="${KEEP_SMOKE_ENV:-0}"
 POSTGRES_CONTAINER="logovisor-smoke-postgres-${RUN_ID}"
 CLICKHOUSE_CONTAINER="logovisor-smoke-clickhouse-${RUN_ID}"
 AGENT_CONTAINER="logovisor-smoke-agent-${RUN_ID}"
+API_CONTAINER="logovisor-smoke-api-${RUN_ID}"
 AGENT_VOLUME="logovisor-smoke-agent-state-${RUN_ID}"
 AGENT_IMAGE="logovisor-agent:smoke-${RUN_ID}"
+API_IMAGE="logovisor-api:smoke-${RUN_ID}"
 
 API_LOG="/tmp/logovisor-smoke-api-${RUN_ID}.log"
 TEST_LOG="/tmp/logovisor-smoke-${RUN_ID}.log"
 BOOTSTRAP_TOKEN="logovisor-smoke-token-${RUN_ID}"
-
-API_PID=""
 
 docker_ctx() {
   docker --context "$DOCKER_CONTEXT" "$@"
@@ -82,18 +82,14 @@ trim_spaces() {
 cleanup() {
   local exit_code=$?
 
-  if [[ -n "$API_PID" ]]; then
-    kill "$API_PID" >/dev/null 2>&1 || true
-    wait "$API_PID" 2>/dev/null || true
-  fi
-
   if [[ "$KEEP_SMOKE_ENV" != "1" ]]; then
-    docker_ctx rm -f "$AGENT_CONTAINER" "$CLICKHOUSE_CONTAINER" "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
+    docker_ctx rm -f "$API_CONTAINER" "$AGENT_CONTAINER" "$CLICKHOUSE_CONTAINER" "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
     docker_ctx volume rm "$AGENT_VOLUME" >/dev/null 2>&1 || true
     rm -f "$TEST_LOG"
   else
     printf 'Smoke test environment kept:\n'
     printf '  API log: %s\n' "$API_LOG"
+    printf '  API container: %s\n' "$API_CONTAINER"
     printf '  Postgres container: %s\n' "$POSTGRES_CONTAINER"
     printf '  ClickHouse container: %s\n' "$CLICKHOUSE_CONTAINER"
     printf '  Agent container: %s\n' "$AGENT_CONTAINER"
@@ -107,6 +103,9 @@ trap cleanup EXIT
 
 printf '==> Building API\n'
 npm run api:build >/dev/null
+
+printf '==> Building API image (%s) via local Docker context %s\n' "$API_IMAGE" "$DOCKER_CONTEXT"
+docker_ctx build -f apps/api/Dockerfile -t "$API_IMAGE" . >/dev/null
 
 printf '==> Building agent image (%s) via local Docker context %s\n' "$AGENT_IMAGE" "$DOCKER_CONTEXT"
 docker_ctx build -f agents/Dockerfile -t "$AGENT_IMAGE" . >/dev/null
@@ -154,18 +153,26 @@ docker_ctx exec "$CLICKHOUSE_CONTAINER" clickhouse-client --user logovisor --pas
 API_PORT="$(free_port)"
 
 printf '==> Starting API on port %s\n' "$API_PORT"
-env \
-  PORT="$API_PORT" \
-  HOST=0.0.0.0 \
-  DATABASE_URL="postgres://logovisor:logovisor@127.0.0.1:${POSTGRES_PORT}/logovisor" \
-  LOGOVISOR_ENROLLMENT_TOKEN="$BOOTSTRAP_TOKEN" \
-  LOGOVISOR_ENROLLMENT_TOKEN_TTL_MINUTES=60 \
-  CLICKHOUSE_URL="http://logovisor:logovisor@127.0.0.1:${CLICKHOUSE_HTTP_PORT}/" \
-  CLICKHOUSE_DATABASE=default \
-  nohup node "$ROOT_DIR/apps/api/dist/main.js" >"$API_LOG" 2>&1 </dev/null &
-API_PID=$!
+docker_ctx run -d \
+  --name "$API_CONTAINER" \
+  --add-host host.docker.internal:host-gateway \
+  -p "${API_PORT}:3000" \
+  -e PORT=3000 \
+  -e HOST=0.0.0.0 \
+  -e DATABASE_URL="postgres://logovisor:logovisor@host.docker.internal:${POSTGRES_PORT}/logovisor" \
+  -e LOGOVISOR_ENROLLMENT_TOKEN="$BOOTSTRAP_TOKEN" \
+  -e LOGOVISOR_OPERATOR_USERNAME=admin \
+  -e LOGOVISOR_OPERATOR_PASSWORD=change-me \
+  -e LOGOVISOR_OPERATOR_JWT_SECRET=smoke-jwt-secret \
+  -e LOGOVISOR_OPERATOR_JWT_EXPIRES_IN_SECONDS=28800 \
+  -e LOGOVISOR_OPERATOR_COOKIE_SECURE=false \
+  -e LOGOVISOR_ENROLLMENT_TOKEN_TTL_MINUTES=60 \
+  -e CLICKHOUSE_URL="http://logovisor:logovisor@host.docker.internal:${CLICKHOUSE_HTTP_PORT}/" \
+  -e CLICKHOUSE_DATABASE=default \
+  "$API_IMAGE" >/dev/null
 
-wait_for_http "http://127.0.0.1:${API_PORT}/" 60
+wait_for_http "http://127.0.0.1:${API_PORT}/health" 60
+docker_ctx logs "$API_CONTAINER" >"$API_LOG" 2>&1 || true
 
 printf '==> Starting agent container\n'
 : > "$TEST_LOG"
@@ -175,7 +182,7 @@ agent_args=(
   --name "$AGENT_CONTAINER"
   --user 0:0
   --add-host host.docker.internal:host-gateway
-  -e "LOGOVISOR_MASTER_URL=http://host.docker.internal:${API_PORT}"
+  -e "LOGOVISOR_MASTER_URL=http://host.docker.internal:${API_PORT}/api"
   -e "LOGOVISOR_BOOTSTRAP_TOKEN=${BOOTSTRAP_TOKEN}"
   -e "LOGOVISOR_HOST_ID=smoke-host-${RUN_ID}"
   -e "LOGOVISOR_LOG_FILE_PATH=/host-logs/$(basename "$TEST_LOG")"
@@ -244,7 +251,7 @@ done
 
 if (( heartbeat_count <= 0 )) || (( file_count <= 0 )); then
   printf 'Smoke test failed. Recent API log:\n'
-  tail -n 100 "$API_LOG" || true
+  docker_ctx logs "$API_CONTAINER" || true
   printf '\nRecent agent log:\n'
   docker_ctx logs "$AGENT_CONTAINER" || true
   exit 1

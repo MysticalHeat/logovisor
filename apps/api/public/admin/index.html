@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>logovisor admin</title>
+    <style>
+      body { font-family: sans-serif; margin: 24px; background: #0b1020; color: #e5e7eb; }
+      input, button, select { padding: 8px; margin: 4px 0; }
+      section { background: #121936; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border-bottom: 1px solid #29314f; padding: 8px; text-align: left; }
+      code, pre { background: #0f172a; padding: 8px; display: block; overflow: auto; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>logovisor admin</h1>
+
+    <section id="login-section">
+      <h2>Login</h2>
+      <input id="username" placeholder="username" value="admin" />
+      <input id="password" placeholder="password" type="password" />
+      <button id="login-button">Login</button>
+      <div id="login-error"></div>
+    </section>
+
+    <section id="app-section" class="hidden">
+      <button id="logout-button">Logout</button>
+      <h2>Agents</h2>
+      <button id="refresh-agents">Refresh agents</button>
+      <pre id="agents-output"></pre>
+
+      <h2>Logs</h2>
+      <input id="logs-query" placeholder="search text" />
+      <button id="search-logs">Search logs</button>
+      <pre id="logs-output"></pre>
+
+      <h2>Create enrollment token</h2>
+      <input id="token-label" placeholder="label" value="admin ui token" />
+      <input id="token-ttl" placeholder="ttl minutes" value="60" />
+      <button id="create-token">Create token</button>
+      <pre id="token-output"></pre>
+    </section>
+
+    <script>
+      const loginSection = document.getElementById('login-section');
+      const appSection = document.getElementById('app-section');
+      const loginError = document.getElementById('login-error');
+
+      async function api(path, options = {}) {
+        const response = await fetch(`/api${path}`, {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+          ...options,
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(body);
+        }
+
+        return response.json();
+      }
+
+      async function refreshSession() {
+        try {
+          await api('/auth/me');
+          loginSection.classList.add('hidden');
+          appSection.classList.remove('hidden');
+          await refreshAgents();
+        } catch {
+          loginSection.classList.remove('hidden');
+          appSection.classList.add('hidden');
+        }
+      }
+
+      async function refreshAgents() {
+        const data = await api('/admin/agents');
+        document.getElementById('agents-output').textContent = JSON.stringify(data, null, 2);
+      }
+
+      document.getElementById('login-button').onclick = async () => {
+        loginError.textContent = '';
+        try {
+          await api('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({
+              username: document.getElementById('username').value,
+              password: document.getElementById('password').value,
+            }),
+          });
+          await refreshSession();
+        } catch (error) {
+          loginError.textContent = error.message;
+        }
+      };
+
+      document.getElementById('logout-button').onclick = async () => {
+        await api('/auth/logout', { method: 'POST' });
+        await refreshSession();
+      };
+
+      document.getElementById('refresh-agents').onclick = refreshAgents;
+
+      document.getElementById('search-logs').onclick = async () => {
+        const query = encodeURIComponent(document.getElementById('logs-query').value);
+        const data = await api(`/admin/logs/search?query=${query}`);
+        document.getElementById('logs-output').textContent = JSON.stringify(data, null, 2);
+      };
+
+      document.getElementById('create-token').onclick = async () => {
+        const data = await api('/admin/enrollment-tokens', {
+          method: 'POST',
+          body: JSON.stringify({
+            label: document.getElementById('token-label').value,
+            ttlMinutes: Number(document.getElementById('token-ttl').value),
+          }),
+        });
+        document.getElementById('token-output').textContent = JSON.stringify(data, null, 2);
+      };
+
+      void refreshSession();
+    </script>
+  </body>
+  </html>

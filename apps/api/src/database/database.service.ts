@@ -34,6 +34,10 @@ export class DatabaseService implements OnModuleDestroy {
     await this.pool.end();
   }
 
+  async ping(): Promise<void> {
+    await this.pool.query('SELECT 1');
+  }
+
   private async initialize(): Promise<void> {
     const databaseUrl = this.configService.get<string>('DATABASE_URL');
 
@@ -57,8 +61,11 @@ export class DatabaseService implements OnModuleDestroy {
       CREATE TABLE IF NOT EXISTS enrollment_tokens (
         id TEXT PRIMARY KEY,
         token_hash TEXT NOT NULL UNIQUE,
+        token_prefix TEXT,
+        label TEXT,
         expires_at TIMESTAMPTZ NOT NULL,
         used_at TIMESTAMPTZ,
+        revoked_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
@@ -85,6 +92,13 @@ export class DatabaseService implements OnModuleDestroy {
       ON agent_tokens (agent_id);
     `);
 
+    await this.pool.query(`
+      ALTER TABLE enrollment_tokens
+      ADD COLUMN IF NOT EXISTS token_prefix TEXT,
+      ADD COLUMN IF NOT EXISTS label TEXT,
+      ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+    `);
+
     const bootstrapToken = this.configService.get<string>(
       'LOGOVISOR_ENROLLMENT_TOKEN',
     );
@@ -102,11 +116,17 @@ export class DatabaseService implements OnModuleDestroy {
 
     await this.pool.query(
       `
-        INSERT INTO enrollment_tokens (id, token_hash, expires_at)
-        VALUES ($1, $2, $3)
+        INSERT INTO enrollment_tokens (id, token_hash, token_prefix, label, expires_at)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (token_hash) DO NOTHING
       `,
-      [randomUUID(), hashToken(bootstrapToken), expiresAt],
+      [
+        randomUUID(),
+        hashToken(bootstrapToken),
+        bootstrapToken.slice(0, 12),
+        'default bootstrap token',
+        expiresAt,
+      ],
     );
   }
 }
