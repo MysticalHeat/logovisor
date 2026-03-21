@@ -51,7 +51,9 @@ export function parseAlertDsl(input: string): AlertDslValidationResult {
 
     const where = parseWhere(entries.get('where') ?? '', source);
     if (where === null) {
-      return fail('invalid where clause or unsupported field for selected source');
+      return fail(
+        'invalid where clause or unsupported field for selected source',
+      );
     }
 
     const trigger = parseTrigger(entries.get('trigger') ?? '', source);
@@ -144,7 +146,9 @@ function parseWhere(
       continue;
     }
 
-    const containsMatch = part.match(/^([A-Za-z][A-Za-z0-9]*)\s+contains\s+(.+)$/);
+    const containsMatch = part.match(
+      /^([A-Za-z][A-Za-z0-9]*)\s+contains\s+(.+)$/,
+    );
     if (containsMatch) {
       const field = containsMatch[1];
       const stringValue = parseStringLiteral(containsMatch[2]);
@@ -218,7 +222,10 @@ function parseTrigger(
 
 function parseSeverity(value?: string): AlertSeverity | null {
   const raw = parseStringLiteral(value) ?? value;
-  return raw === 'info' || raw === 'warn' || raw === 'error' || raw === 'critical'
+  return raw === 'info' ||
+    raw === 'warn' ||
+    raw === 'error' ||
+    raw === 'critical'
     ? raw
     : null;
 }
@@ -276,7 +283,10 @@ function parseDuration(value: string): number {
 function buildExplanation(rule: CompiledAlertRule): string {
   const where = rule.where.length
     ? ` where ${rule.where
-        .map((clause) => `${clause.field} ${clause.operator} ${renderValue(clause.value)}`)
+        .map(
+          (clause) =>
+            `${clause.field} ${clause.operator} ${renderValue(clause.value)}`,
+        )
         .join(' and ')}`
     : '';
   const window = rule.windowSeconds

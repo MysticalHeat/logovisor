@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { ClickhouseService } from '../clickhouse/clickhouse.service';
@@ -18,8 +23,9 @@ export class HousekeepingService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     const intervalSeconds = Number(
-      this.configService.get<string>('LOGOVISOR_HOUSEKEEPING_INTERVAL_SECONDS') ??
-        '3600',
+      this.configService.get<string>(
+        'LOGOVISOR_HOUSEKEEPING_INTERVAL_SECONDS',
+      ) ?? '3600',
     );
 
     this.intervalHandle = setInterval(() => {
@@ -36,7 +42,8 @@ export class HousekeepingService implements OnModuleInit, OnModuleDestroy {
 
   async run(): Promise<void> {
     const heartbeatRetentionDays = Number(
-      this.configService.get<string>('LOGOVISOR_HEARTBEAT_RETENTION_DAYS') ?? '7',
+      this.configService.get<string>('LOGOVISOR_HEARTBEAT_RETENTION_DAYS') ??
+        '7',
     );
     const tokenRetentionDays = Number(
       this.configService.get<string>('LOGOVISOR_TOKEN_RETENTION_DAYS') ?? '7',
@@ -67,7 +74,10 @@ export class HousekeepingService implements OnModuleInit, OnModuleDestroy {
       this.monitoringService.recordHousekeeping(true);
     } catch (error) {
       this.monitoringService.recordHousekeeping(false);
-      this.logger.error('housekeeping failed', error instanceof Error ? error.stack : undefined);
+      this.logger.error(
+        'housekeeping failed',
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 }

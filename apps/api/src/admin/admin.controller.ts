@@ -279,7 +279,10 @@ class LogSearchResponseDto {
   @ApiPropertyOptional({
     type: 'object',
     additionalProperties: true,
-    example: { beforeTimestamp: '2026-03-21T10:35:03.000Z', beforeEventId: 'evt_123' },
+    example: {
+      beforeTimestamp: '2026-03-21T10:35:03.000Z',
+      beforeEventId: 'evt_123',
+    },
   })
   nextCursor?: Record<string, string>;
 }
@@ -372,10 +375,14 @@ export class AdminController {
       );
     }
     if (query.status === 'online') {
-      filters.push(sql`${schema.agents.lastSeenAt} >= NOW() - INTERVAL '5 minutes'`);
+      filters.push(
+        sql`${schema.agents.lastSeenAt} >= NOW() - INTERVAL '5 minutes'`,
+      );
     }
     if (query.status === 'offline') {
-      filters.push(sql`${schema.agents.lastSeenAt} < NOW() - INTERVAL '5 minutes'`);
+      filters.push(
+        sql`${schema.agents.lastSeenAt} < NOW() - INTERVAL '5 minutes'`,
+      );
     }
 
     const rows = await this.databaseService.db
@@ -429,7 +436,9 @@ export class AdminController {
   @ApiOperation({ summary: 'List runtime agent tokens' })
   @ApiOkResponse({ type: AgentTokenListResponseDto })
   @ApiStandardErrorResponses(401)
-  async listAgentTokens(@Param('id') id: string): Promise<AgentTokenListResponseDto> {
+  async listAgentTokens(
+    @Param('id') id: string,
+  ): Promise<AgentTokenListResponseDto> {
     await this.databaseService.ensureInitialized();
 
     const rows = await this.databaseService.db
@@ -461,7 +470,12 @@ export class AdminController {
     const [row] = await this.databaseService.db
       .select()
       .from(schema.agentTokens)
-      .where(and(eq(schema.agentTokens.id, tokenId), eq(schema.agentTokens.agentId, id)))
+      .where(
+        and(
+          eq(schema.agentTokens.id, tokenId),
+          eq(schema.agentTokens.agentId, id),
+        ),
+      )
       .limit(1);
 
     if (!row) {
@@ -649,8 +663,7 @@ function toHeartbeatSnapshot(
   return {
     receivedAt: heartbeat.receivedAt.toISOString(),
     health: typeof payload.health === 'string' ? payload.health : 'unknown',
-    queueDepth:
-      typeof payload.queueDepth === 'number' ? payload.queueDepth : 0,
+    queueDepth: typeof payload.queueDepth === 'number' ? payload.queueDepth : 0,
     payload: isRecord(payload.payload) ? payload.payload : null,
     system,
   };

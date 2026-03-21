@@ -9,7 +9,10 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../database/database.service';
 import { PoolClient } from 'pg';
-import { ClickhouseService, quoteSqlString } from '../clickhouse/clickhouse.service';
+import {
+  ClickhouseService,
+  quoteSqlString,
+} from '../clickhouse/clickhouse.service';
 import * as schema from '../database/schema';
 import { decryptSecret } from '../shared/token.util';
 import { sendTelegramRequest } from './telegram-http';
@@ -161,7 +164,7 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
               notification.id,
               String(attempts),
               String(retryMinutes),
-              error instanceof Error ? error.message : 'telegram send failed',
+              toNotificationErrorMessage(error),
             ],
           );
         }
@@ -203,7 +206,11 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
     if (rule.trigger.kind === 'missing') {
       const missingFor = rule.trigger.durationSeconds;
       return rows
-        .filter((row) => Date.now() - new Date(row.last_seen_at).getTime() >= missingFor * 1000)
+        .filter(
+          (row) =>
+            Date.now() - new Date(row.last_seen_at).getTime() >=
+            missingFor * 1000,
+        )
         .filter((row) => matchesHeartbeatWhere(rule, row))
         .map((row) => ({
           subject: this.buildSubject(rule, {
@@ -225,25 +232,44 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
       if (!row.received_at) {
         return false;
       }
-      if (windowMs > 0 && Date.now() - new Date(row.received_at).getTime() > windowMs) {
+      if (
+        windowMs > 0 &&
+        Date.now() - new Date(row.received_at).getTime() > windowMs
+      ) {
         return false;
       }
       return matchesHeartbeatWhere(rule, row);
     });
 
-    const grouped = new Map<string, { subject: AlertIncidentSubject; count: number; sample: typeof rows[number] }>();
+    const grouped = new Map<
+      string,
+      {
+        subject: AlertIncidentSubject;
+        count: number;
+        sample: (typeof rows)[number];
+      }
+    >();
     for (const row of matchingRows) {
-      const subject = this.buildSubject(rule, { hostId: row.host_id, agentId: row.agent_id });
+      const subject = this.buildSubject(rule, {
+        hostId: row.host_id,
+        agentId: row.agent_id,
+      });
       const existing = grouped.get(`${subject.type}:${subject.id}`);
       if (existing) {
         existing.count += 1;
       } else {
-        grouped.set(`${subject.type}:${subject.id}`, { subject, count: 1, sample: row });
+        grouped.set(`${subject.type}:${subject.id}`, {
+          subject,
+          count: 1,
+          sample: row,
+        });
       }
     }
 
-    const threshold = rule.trigger.kind === 'count' ? rule.trigger.threshold : 1;
-    const operator = rule.trigger.kind === 'count' ? rule.trigger.operator : '>=';
+    const threshold =
+      rule.trigger.kind === 'count' ? rule.trigger.threshold : 1;
+    const operator =
+      rule.trigger.kind === 'count' ? rule.trigger.operator : '>=';
 
     return Array.from(grouped.values())
       .filter((item) => compareThreshold(item.count, operator, threshold))
@@ -258,7 +284,9 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
       }));
   }
 
-  private async evaluateLogRule(rule: CompiledAlertRule): Promise<EvaluatedMatch[]> {
+  private async evaluateLogRule(
+    rule: CompiledAlertRule,
+  ): Promise<EvaluatedMatch[]> {
     const whereClauses: string[] = [];
     for (const clause of rule.where) {
       const column = toLogColumn(clause.field);
@@ -306,8 +334,10 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
         .join('\n'),
     );
 
-    const threshold = rule.trigger.kind === 'count' ? rule.trigger.threshold : 1;
-    const operator = rule.trigger.kind === 'count' ? rule.trigger.operator : '>=';
+    const threshold =
+      rule.trigger.kind === 'count' ? rule.trigger.threshold : 1;
+    const operator =
+      rule.trigger.kind === 'count' ? rule.trigger.operator : '>=';
 
     return rows
       .map((row) => ({
@@ -333,7 +363,9 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
     matches: EvaluatedMatch[],
   ): Promise<void> {
     const now = new Date();
-    const activeKeys = matches.map((match) => this.buildIncidentKey(ruleId, match.subject));
+    const activeKeys = matches.map((match) =>
+      this.buildIncidentKey(ruleId, match.subject),
+    );
     const incidents = await this.databaseService.db
       .select()
       .from(schema.alertIncidents)
@@ -341,8 +373,15 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
 
     for (const match of matches) {
       const incidentKey = this.buildIncidentKey(ruleId, match.subject);
-      const existing = incidents.find((incident) => incident.incidentKey === incidentKey);
-      const message = this.renderMessage(rule.message, match.subject, match.value, rule);
+      const existing = incidents.find(
+        (incident) => incident.incidentKey === incidentKey,
+      );
+      const message = this.renderMessage(
+        rule.message,
+        match.subject,
+        match.value,
+        rule,
+      );
 
       if (!existing) {
         const status = rule.forSeconds ? 'pending' : 'firing';
@@ -384,7 +423,8 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
       const shouldFire =
         existing.status === 'pending' &&
         (!rule.forSeconds ||
-          now.getTime() - existing.firstSeenAt.getTime() >= rule.forSeconds * 1000);
+          now.getTime() - existing.firstSeenAt.getTime() >=
+            rule.forSeconds * 1000);
 
       await this.databaseService.db
         .update(schema.alertIncidents)
@@ -416,7 +456,8 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
         rule.dedupSeconds &&
         rule.dedupSeconds > 0 &&
         (!existing.lastNotifiedAt ||
-          now.getTime() - existing.lastNotifiedAt.getTime() >= rule.dedupSeconds * 1000)
+          now.getTime() - existing.lastNotifiedAt.getTime() >=
+            rule.dedupSeconds * 1000)
       ) {
         await this.enqueueNotificationIfAllowed(
           existing.id,
@@ -429,7 +470,10 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    for (const incident of incidents.filter((item) => !activeKeys.includes(item.incidentKey) && item.status !== 'resolved')) {
+    for (const incident of incidents.filter(
+      (item) =>
+        !activeKeys.includes(item.incidentKey) && item.status !== 'resolved',
+    )) {
       await this.databaseService.db
         .update(schema.alertIncidents)
         .set({ status: 'resolved', resolvedAt: now, updatedAt: now })
@@ -439,7 +483,11 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
           incident.id,
           incident.integrationId,
           incident.ruleId,
-          { type: incident.subjectType as AlertIncidentSubject['type'], id: incident.subjectId, label: incident.subjectLabel },
+          {
+            type: incident.subjectType as AlertIncidentSubject['type'],
+            id: incident.subjectId,
+            label: incident.subjectLabel,
+          },
           'resolved',
           `Resolved: ${incident.message}`,
         );
@@ -484,17 +532,32 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
       .from(schema.alertSilences)
       .where(
         and(
-          or(isNull(schema.alertSilences.ruleId), eq(schema.alertSilences.ruleId, ruleId)),
-          or(isNull(schema.alertSilences.subjectType), eq(schema.alertSilences.subjectType, subjectType)),
-          or(isNull(schema.alertSilences.subjectId), eq(schema.alertSilences.subjectId, subjectId)),
+          or(
+            isNull(schema.alertSilences.ruleId),
+            eq(schema.alertSilences.ruleId, ruleId),
+          ),
+          or(
+            isNull(schema.alertSilences.subjectType),
+            eq(schema.alertSilences.subjectType, subjectType),
+          ),
+          or(
+            isNull(schema.alertSilences.subjectId),
+            eq(schema.alertSilences.subjectId, subjectId),
+          ),
         ),
       );
 
     const now = Date.now();
-    return silences.some((silence) => silence.startsAt.getTime() <= now && silence.endsAt.getTime() >= now);
+    return silences.some(
+      (silence) =>
+        silence.startsAt.getTime() <= now && silence.endsAt.getTime() >= now,
+    );
   }
 
-  private buildIncidentKey(ruleId: string, subject: AlertIncidentSubject): string {
+  private buildIncidentKey(
+    ruleId: string,
+    subject: AlertIncidentSubject,
+  ): string {
     return `${ruleId}:${subject.type}:${subject.id}`;
   }
 
@@ -502,7 +565,8 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
     rule: CompiledAlertRule,
     values: Record<string, string>,
   ): AlertIncidentSubject {
-    const key = rule.groupBy ?? (rule.source === 'heartbeats' ? 'agentId' : 'global');
+    const key =
+      rule.groupBy ?? (rule.source === 'heartbeats' ? 'agentId' : 'global');
     if (key === 'global') {
       return { type: 'global', id: 'global', label: 'global' };
     }
@@ -518,7 +582,10 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
   ): string {
     return template
       .replaceAll('{{subject}}', subject.label)
-      .replaceAll('{{value}}', String(value.value ?? value.missingForSeconds ?? ''))
+      .replaceAll(
+        '{{value}}',
+        String(value.value ?? value.missingForSeconds ?? ''),
+      )
       .replaceAll('{{hostId}}', String(value.hostId ?? subject.id))
       .replaceAll('{{agentId}}', String(value.agentId ?? subject.id))
       .replaceAll('{{window}}', String(rule.windowSeconds ?? ''));
@@ -547,13 +614,23 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
 
       if (this.isLeader && !this.evaluateInterval && !this.dispatchInterval) {
         const evaluateSeconds = Number(
-          this.configService.get<string>('LOGOVISOR_ALERT_EVALUATION_INTERVAL_SECONDS') ?? '60',
+          this.configService.get<string>(
+            'LOGOVISOR_ALERT_EVALUATION_INTERVAL_SECONDS',
+          ) ?? '60',
         );
         const dispatchSeconds = Number(
-          this.configService.get<string>('LOGOVISOR_ALERT_DISPATCH_INTERVAL_SECONDS') ?? '5',
+          this.configService.get<string>(
+            'LOGOVISOR_ALERT_DISPATCH_INTERVAL_SECONDS',
+          ) ?? '5',
         );
-        this.evaluateInterval = setInterval(() => void this.evaluateRules(), evaluateSeconds * 1000);
-        this.dispatchInterval = setInterval(() => void this.dispatchNotifications(), dispatchSeconds * 1000);
+        this.evaluateInterval = setInterval(
+          () => void this.evaluateRules(),
+          evaluateSeconds * 1000,
+        );
+        this.dispatchInterval = setInterval(
+          () => void this.dispatchNotifications(),
+          dispatchSeconds * 1000,
+        );
         this.evaluateInterval.unref();
         this.dispatchInterval.unref();
         void this.evaluateRules();
@@ -561,7 +638,10 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (error) {
       this.isLeader = false;
-      this.logger.error('alerts leader election failed', error instanceof Error ? error.stack : undefined);
+      this.logger.error(
+        'alerts leader election failed',
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 
@@ -584,6 +664,21 @@ export class AlertsRuntimeService implements OnModuleInit, OnModuleDestroy {
 
     return { providerMessageId: response.providerMessageId };
   }
+}
+
+function toNotificationErrorMessage(error: unknown): string {
+  if (
+    error instanceof Error &&
+    error.message === 'Unsupported state or unable to authenticate data'
+  ) {
+    return 'telegram bot token cannot be decrypted; re-enter and save the integration bot token';
+  }
+
+  if (error instanceof Error && error.message === 'invalid encrypted secret payload') {
+    return 'telegram bot token payload is invalid; re-enter and save the integration bot token';
+  }
+
+  return error instanceof Error ? error.message : 'telegram send failed';
 }
 
 function toLogColumn(field?: string): string | null {

@@ -110,7 +110,10 @@ class TelegramIntegrationTestResponseDto {
 }
 
 class CreateAlertRuleDto {
-  @ApiProperty({ example: 'rule "error_spike" {\n  source = logs\n  where = level = "error"\n  window = 5m\n  trigger = count() >= 10\n  severity = "error"\n  message = "Too many errors"\n  notify = telegram("ops-main")\n}' })
+  @ApiProperty({
+    example:
+      'rule "error_spike" {\n  source = logs\n  where = level = "error"\n  window = 5m\n  trigger = count() >= 10\n  severity = "error"\n  message = "Too many errors"\n  notify = telegram("ops-main")\n}',
+  })
   @IsString()
   dslText: string;
 
@@ -474,16 +477,25 @@ export class AlertsController {
 
   @Get('telegram/integrations')
   @ApiOperation({ summary: 'List Telegram integrations' })
-  @ApiOkResponse({ description: 'Telegram integrations returned.', type: TelegramIntegrationListDto })
+  @ApiOkResponse({
+    description: 'Telegram integrations returned.',
+    type: TelegramIntegrationListDto,
+  })
   @ApiStandardErrorResponses(401)
-  async listTelegramIntegrations(): Promise<{ items: unknown[]; count: number }> {
+  async listTelegramIntegrations(): Promise<{
+    items: unknown[];
+    count: number;
+  }> {
     const items = await this.alertsService.listTelegramIntegrations();
     return { items, count: items.length };
   }
 
   @Post('telegram/integrations')
   @ApiOperation({ summary: 'Create Telegram integration' })
-  @ApiOkResponse({ description: 'Telegram integration created.', type: TelegramIntegrationCreateResponseDto })
+  @ApiOkResponse({
+    description: 'Telegram integration created.',
+    type: TelegramIntegrationCreateResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async createTelegramIntegration(
     @Body() body: CreateTelegramIntegrationDto,
@@ -493,7 +505,10 @@ export class AlertsController {
 
   @Patch('telegram/integrations/:id')
   @ApiOperation({ summary: 'Update Telegram integration' })
-  @ApiOkResponse({ description: 'Telegram integration updated.', type: TelegramIntegrationUpdateResponseDto })
+  @ApiOkResponse({
+    description: 'Telegram integration updated.',
+    type: TelegramIntegrationUpdateResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async updateTelegramIntegration(
     @Param('id') id: string,
@@ -504,7 +519,10 @@ export class AlertsController {
 
   @Delete('telegram/integrations/:id')
   @ApiOperation({ summary: 'Delete Telegram integration' })
-  @ApiOkResponse({ description: 'Telegram integration deleted.', type: OkResponseDto })
+  @ApiOkResponse({
+    description: 'Telegram integration deleted.',
+    type: OkResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async deleteTelegramIntegration(
     @Param('id') id: string,
@@ -514,7 +532,10 @@ export class AlertsController {
 
   @Post('telegram/integrations/:id/test')
   @ApiOperation({ summary: 'Send Telegram test message' })
-  @ApiOkResponse({ description: 'Telegram test sent.', type: TelegramIntegrationTestResponseDto })
+  @ApiOkResponse({
+    description: 'Telegram test sent.',
+    type: TelegramIntegrationTestResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async testTelegramIntegration(
     @Param('id') id: string,
@@ -524,7 +545,10 @@ export class AlertsController {
 
   @Get('rules')
   @ApiOperation({ summary: 'List alert rules' })
-  @ApiOkResponse({ description: 'Alert rules returned.', type: AlertRuleListDto })
+  @ApiOkResponse({
+    description: 'Alert rules returned.',
+    type: AlertRuleListDto,
+  })
   @ApiStandardErrorResponses(401)
   async listRules(): Promise<{ items: unknown[]; count: number }> {
     const items = await this.alertsService.listRules();
@@ -533,7 +557,10 @@ export class AlertsController {
 
   @Post('rules')
   @ApiOperation({ summary: 'Create alert rule from DSL' })
-  @ApiOkResponse({ description: 'Alert rule created.', type: AlertRuleWriteResponseDto })
+  @ApiOkResponse({
+    description: 'Alert rule created.',
+    type: AlertRuleWriteResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async createRule(
     @Body() body: CreateAlertRuleDto,
@@ -543,7 +570,10 @@ export class AlertsController {
 
   @Patch('rules/:id')
   @ApiOperation({ summary: 'Update alert rule from DSL' })
-  @ApiOkResponse({ description: 'Alert rule updated.', type: AlertRuleWriteResponseDto })
+  @ApiOkResponse({
+    description: 'Alert rule updated.',
+    type: AlertRuleWriteResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async updateRule(
     @Param('id') id: string,
@@ -562,7 +592,10 @@ export class AlertsController {
 
   @Post('parse')
   @ApiOperation({ summary: 'Parse and validate alert DSL' })
-  @ApiOkResponse({ description: 'DSL validation result returned.', type: AlertDslValidationResponseDto })
+  @ApiOkResponse({
+    description: 'DSL validation result returned.',
+    type: AlertDslValidationResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async parseDsl(@Body() body: ParseDslDto): Promise<unknown> {
     return this.alertsService.parseDsl(body.dslText);
@@ -570,7 +603,10 @@ export class AlertsController {
 
   @Get('dsl-metadata')
   @ApiOperation({ summary: 'Get alert DSL metadata and snippets' })
-  @ApiOkResponse({ description: 'DSL metadata returned.', type: AlertDslMetadataResponseDto })
+  @ApiOkResponse({
+    description: 'DSL metadata returned.',
+    type: AlertDslMetadataResponseDto,
+  })
   @ApiStandardErrorResponses(401)
   getDslMetadata(): Record<string, unknown> {
     return this.alertsService.getDslMetadata();
@@ -578,7 +614,10 @@ export class AlertsController {
 
   @Get('incidents')
   @ApiOperation({ summary: 'List alert incidents' })
-  @ApiOkResponse({ description: 'Alert incidents returned.', type: AlertIncidentListDto })
+  @ApiOkResponse({
+    description: 'Alert incidents returned.',
+    type: AlertIncidentListDto,
+  })
   @ApiStandardErrorResponses(401)
   async listIncidents(): Promise<{ items: unknown[]; count: number }> {
     const items = await this.alertsService.listIncidents();
@@ -587,7 +626,10 @@ export class AlertsController {
 
   @Get('notifications')
   @ApiOperation({ summary: 'List alert notification history' })
-  @ApiOkResponse({ description: 'Alert notification history returned.', type: AlertNotificationListDto })
+  @ApiOkResponse({
+    description: 'Alert notification history returned.',
+    type: AlertNotificationListDto,
+  })
   @ApiStandardErrorResponses(401)
   async listNotifications(): Promise<{ items: unknown[]; count: number }> {
     const items = await this.alertsService.listNotificationHistory();
@@ -596,7 +638,10 @@ export class AlertsController {
 
   @Post('preview')
   @ApiOperation({ summary: 'Preview alert rule on recent data' })
-  @ApiOkResponse({ description: 'Alert preview returned.', type: AlertPreviewResponseDto })
+  @ApiOkResponse({
+    description: 'Alert preview returned.',
+    type: AlertPreviewResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async previewRule(@Body() body: ParseDslDto): Promise<unknown> {
     return this.alertsService.previewRule({ dslText: body.dslText });
@@ -604,7 +649,10 @@ export class AlertsController {
 
   @Post('incidents/:id/resolve')
   @ApiOperation({ summary: 'Resolve alert incident' })
-  @ApiOkResponse({ description: 'Alert incident resolved.', type: OkResponseDto })
+  @ApiOkResponse({
+    description: 'Alert incident resolved.',
+    type: OkResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async resolveIncident(@Param('id') id: string): Promise<{ ok: boolean }> {
     return this.alertsService.resolveIncident(id);
@@ -612,7 +660,10 @@ export class AlertsController {
 
   @Post('incidents/:id/ack')
   @ApiOperation({ summary: 'Acknowledge alert incident' })
-  @ApiOkResponse({ description: 'Alert incident acknowledged.', type: OkResponseDto })
+  @ApiOkResponse({
+    description: 'Alert incident acknowledged.',
+    type: OkResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async acknowledgeIncident(
     @Param('id') id: string,
@@ -623,7 +674,10 @@ export class AlertsController {
 
   @Post('incidents/:id/silence')
   @ApiOperation({ summary: 'Create silence from incident' })
-  @ApiOkResponse({ description: 'Alert incident silenced.', type: AlertSilenceWriteResponseDto })
+  @ApiOkResponse({
+    description: 'Alert incident silenced.',
+    type: AlertSilenceWriteResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async silenceIncident(
     @Param('id') id: string,
@@ -634,7 +688,10 @@ export class AlertsController {
 
   @Get('silences')
   @ApiOperation({ summary: 'List alert silences' })
-  @ApiOkResponse({ description: 'Alert silences returned.', type: AlertSilenceListDto })
+  @ApiOkResponse({
+    description: 'Alert silences returned.',
+    type: AlertSilenceListDto,
+  })
   @ApiStandardErrorResponses(401)
   async listSilences(): Promise<{ items: unknown[]; count: number }> {
     const items = await this.alertsService.listSilences();
@@ -643,7 +700,10 @@ export class AlertsController {
 
   @Post('silences')
   @ApiOperation({ summary: 'Create alert silence' })
-  @ApiOkResponse({ description: 'Alert silence created.', type: AlertSilenceWriteResponseDto })
+  @ApiOkResponse({
+    description: 'Alert silence created.',
+    type: AlertSilenceWriteResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async createSilence(
     @Body() body: CreateSilenceDto,
@@ -653,7 +713,10 @@ export class AlertsController {
 
   @Post('silences/:id/cancel')
   @ApiOperation({ summary: 'Cancel alert silence' })
-  @ApiOkResponse({ description: 'Alert silence cancelled.', type: OkResponseDto })
+  @ApiOkResponse({
+    description: 'Alert silence cancelled.',
+    type: OkResponseDto,
+  })
   @ApiStandardErrorResponses(400, 401)
   async cancelSilence(@Param('id') id: string): Promise<{ ok: boolean }> {
     return this.alertsService.cancelSilence(id);

@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from 'node:crypto';
 
 export function createOpaqueToken(prefix: string): string {
   return `${prefix}_${randomBytes(24).toString('hex')}`;

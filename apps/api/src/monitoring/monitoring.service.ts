@@ -80,10 +80,7 @@ export class MonitoringService {
         'logovisor_housekeeping_failure_total',
         this.housekeepingFailureTotal,
       ),
-      metric(
-        'logovisor_housekeeping_last_run_timestamp_seconds',
-        lastRun,
-      ),
+      metric('logovisor_housekeeping_last_run_timestamp_seconds', lastRun),
     ].join('\n');
   }
 }

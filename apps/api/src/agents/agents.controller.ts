@@ -242,7 +242,9 @@ export class AgentsController {
 
     if (heartbeatDto.queueDepth !== undefined && heartbeatDto.queueDepth < 0) {
       this.monitoringService.recordHeartbeat(false);
-      throw new BadRequestException('queueDepth must be greater than or equal to 0');
+      throw new BadRequestException(
+        'queueDepth must be greater than or equal to 0',
+      );
     }
 
     await this.databaseService.db.insert(schema.heartbeatHistory).values({

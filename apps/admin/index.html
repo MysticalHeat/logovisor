@@ -35,6 +35,7 @@
         <nav class="nav">
           <button class="nav-item active" data-section="fleet">Fleet</button>
           <button class="nav-item" data-section="logs">Logs</button>
+          <button class="nav-item" data-section="analytics">Analytics</button>
           <button class="nav-item" data-section="alerts">Alerts</button>
           <button class="nav-item" data-section="tokens">Tokens</button>
         </nav>
@@ -52,6 +53,7 @@
           </div>
           <button id="refresh-button">Refresh</button>
         </header>
+        <div id="app-error-banner" class="panel hidden app-error-banner"></div>
 
         <section id="section-fleet" class="section active">
           <div id="fleet-kpis" class="kpis"></div>
@@ -108,6 +110,75 @@
             <div id="logs-output"></div>
             <div class="row-actions top-gap">
               <button id="load-more-logs" class="ghost hidden">Load more</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-analytics" class="section analytics-page">
+          <div class="analytics-hero">
+            <div>
+              <h3 class="analytics-hero-title">Analytics &amp; Visualization</h3>
+              <p class="muted analytics-hero-copy">Insights from your log data and fleet activity.</p>
+            </div>
+          </div>
+          <div class="panel panel-dark controls-grid analytics-controls-grid analytics-filter-panel">
+            <label>
+              <span class="muted">Range</span>
+              <select id="analytics-range">
+                <option value="1h">last 1 hour</option>
+                <option value="6h">last 6 hours</option>
+                <option value="24h" selected>last 24 hours</option>
+                <option value="7d">last 7 days</option>
+              </select>
+            </label>
+            <label><span class="muted">Host ID</span><input id="analytics-host-filter" placeholder="optional host filter" /></label>
+            <label>
+              <span class="muted">Agent</span>
+              <select id="analytics-agent-filter">
+                <option value="">all matched agents</option>
+              </select>
+            </label>
+            <button id="apply-analytics-filters" class="primary">Refresh analytics</button>
+          </div>
+          <div id="analytics-kpis" class="kpis analytics-kpis"></div>
+          <div class="panel panel-dark analytics-panel">
+            <h3>Overview</h3>
+            <div id="analytics-overview-output"></div>
+          </div>
+          <div class="panel panel-dark analytics-panel">
+            <h3>Log Volume Over Time</h3>
+            <div id="analytics-log-volume-output"></div>
+          </div>
+          <div class="split-two analytics-layout">
+            <div class="panel panel-dark analytics-panel">
+              <h3>Error Frequency Heatmap</h3>
+              <p class="muted analytics-panel-copy">Errors by day and hour.</p>
+              <div id="analytics-heatmap-output"></div>
+            </div>
+            <div class="panel panel-dark analytics-panel">
+              <h3>Top Error Messages</h3>
+              <p class="muted analytics-panel-copy">Most frequent repeated failures in the selected window.</p>
+              <div id="analytics-top-errors-output"></div>
+            </div>
+          </div>
+          <div class="panel panel-dark analytics-panel">
+            <h3>Log Volume Comparison</h3>
+            <p class="muted analytics-panel-copy">Current window vs previous window.</p>
+            <div id="analytics-comparison-output"></div>
+          </div>
+          <div class="panel panel-dark analytics-panel">
+            <h3>CPU / Memory Trend</h3>
+            <p id="analytics-cpu-memory-copy" class="muted analytics-panel-copy"></p>
+            <div id="analytics-cpu-memory-output"></div>
+          </div>
+          <div class="split-two analytics-layout">
+            <div class="panel panel-dark analytics-panel">
+              <h3>System trends</h3>
+              <div id="analytics-system-output"></div>
+            </div>
+            <div class="panel panel-dark analytics-panel">
+              <h3>Hosts</h3>
+              <div id="analytics-hosts-output"></div>
             </div>
           </div>
         </section>

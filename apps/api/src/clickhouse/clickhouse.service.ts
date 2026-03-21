@@ -45,7 +45,9 @@ export class ClickhouseService {
 
   async searchLogs(params: SearchLogsParams): Promise<ClickhouseLogRow[]> {
     if (!this.clickhouseUrl) {
-      this.logger.warn('CLICKHOUSE_URL not configured, returning empty search result');
+      this.logger.warn(
+        'CLICKHOUSE_URL not configured, returning empty search result',
+      );
       return [];
     }
 
@@ -63,13 +65,19 @@ export class ClickhouseService {
       whereClauses.push(`level = ${quoteSqlString(params.level)}`);
     }
     if (params.query) {
-      whereClauses.push(`positionCaseInsensitive(message, ${quoteSqlString(params.query)}) > 0`);
+      whereClauses.push(
+        `positionCaseInsensitive(message, ${quoteSqlString(params.query)}) > 0`,
+      );
     }
     if (params.from) {
-      whereClauses.push(`timestamp >= parseDateTime64BestEffort(${quoteSqlString(params.from.toISOString())})`);
+      whereClauses.push(
+        `timestamp >= parseDateTime64BestEffort(${quoteSqlString(params.from.toISOString())})`,
+      );
     }
     if (params.to) {
-      whereClauses.push(`timestamp <= parseDateTime64BestEffort(${quoteSqlString(params.to.toISOString())})`);
+      whereClauses.push(
+        `timestamp <= parseDateTime64BestEffort(${quoteSqlString(params.to.toISOString())})`,
+      );
     }
     if (params.beforeTimestamp) {
       whereClauses.push(
@@ -125,7 +133,9 @@ export class ClickhouseService {
   }
 
   async ping(): Promise<void> {
-    const response = await this.executeClickhouseQuery('SELECT 1 FORMAT JSONEachRow');
+    const response = await this.executeClickhouseQuery(
+      'SELECT 1 FORMAT JSONEachRow',
+    );
     if (!response.ok) {
       throw new Error(
         `clickhouse ping failed with status ${response.status}: ${await response.text()}`,
@@ -266,7 +276,11 @@ function parseSourceJson(value: unknown): Record<string, unknown> {
 
   try {
     const parsed = JSON.parse(value) as unknown;
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+    ) {
       return parsed as Record<string, unknown>;
     }
   } catch {

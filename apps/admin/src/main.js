@@ -15,19 +15,26 @@ const state = {
   alertIncidents: [],
   alertSilences: [],
   alertNotifications: [],
+  analyticsOverview: null,
+  analyticsLogs: null,
+  analyticsSystem: null,
   activeSection: 'fleet',
 };
 
 const sectionCopy = {
   fleet: ['Fleet', 'Agent health, runtime tokens, and latest host metrics.'],
   logs: ['Logs', 'Search ingested log events with cursor-based pagination.'],
+  analytics: ['Analytics', 'Aggregated log volume and host resource trends over time.'],
   alerts: ['Alerts', 'Telegram integrations, DSL rules, and validation hints.'],
   tokens: ['Tokens', 'Create, inspect, and revoke enrollment bootstrap tokens.'],
 };
 
+const analyticsRanges = ['1h', '6h', '24h', '7d'];
+
 const loginShell = document.getElementById('login-shell');
 const appShell = document.getElementById('app-shell');
 const loginError = document.getElementById('login-error');
+const appErrorBanner = document.getElementById('app-error-banner');
 
 function bytesToGiB(value) {
   if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
@@ -43,6 +50,16 @@ function formatDate(value) {
   if (!value) return 'n/a';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function formatPercent(value, digits = 1) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+  return `${value.toFixed(digits)}%`;
+}
+
+function formatCompactNumber(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 }
 
 function escapeHtml(value) {
@@ -76,6 +93,7 @@ function averageOf(values) {
 async function api(path, options = {}) {
   const response = await fetch(`/api${path}`, {
     credentials: 'include',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
@@ -122,17 +140,24 @@ async function refreshSession() {
     document.getElementById('operator-label').textContent = `signed in as ${me.username}`;
     loginShell.classList.add('hidden');
     appShell.classList.remove('hidden');
+    clearAppError();
     await refreshAll();
-  } catch {
+  } catch (error) {
     loginShell.classList.remove('hidden');
     appShell.classList.add('hidden');
+    if (error?.message === 'missing operator session') {
+      loginError.textContent = '';
+    } else {
+      loginError.textContent = state.operator ? error?.message || '' : '';
+    }
   }
 }
 
 async function refreshAll() {
-  await Promise.all([
+  const results = await Promise.allSettled([
     refreshAgents(),
     refreshEnrollmentTokens(),
+    refreshAnalytics(),
     refreshAlertIntegrations(),
     refreshAlertRules(),
     refreshAlertDslMetadata(),
@@ -140,6 +165,51 @@ async function refreshAll() {
     refreshAlertSilences(),
     refreshAlertNotifications(),
   ]);
+
+  const failures = results
+    .filter((result) => result.status === 'rejected')
+    .map((result) => result.reason?.message || String(result.reason));
+
+  if (failures.length) {
+    showAppError(`Some data failed to load: ${failures[0]}`);
+  } else {
+    clearAppError();
+  }
+}
+
+function showAppError(message) {
+  appErrorBanner.textContent = message;
+  appErrorBanner.classList.remove('hidden');
+}
+
+function clearAppError() {
+  appErrorBanner.textContent = '';
+  appErrorBanner.classList.add('hidden');
+}
+
+function currentAnalyticsQuery() {
+  const params = new URLSearchParams();
+  const range = document.getElementById('analytics-range')?.value || '24h';
+  const hostId = document.getElementById('analytics-host-filter')?.value.trim();
+  const agentId = document.getElementById('analytics-agent-filter')?.value.trim();
+  if (range && analyticsRanges.includes(range)) params.set('range', range);
+  if (hostId) params.set('hostId', hostId);
+  if (agentId) params.set('agentId', agentId);
+  return params.toString();
+}
+
+async function refreshAnalytics() {
+  const query = currentAnalyticsQuery();
+  const suffix = query ? `?${query}` : '';
+  const [overview, logs, system] = await Promise.all([
+    api(`/admin/analytics/overview${suffix}`),
+    api(`/admin/analytics/logs${suffix}`),
+    api(`/admin/analytics/system${suffix}`),
+  ]);
+  state.analyticsOverview = overview;
+  state.analyticsLogs = logs;
+  state.analyticsSystem = system;
+  renderAnalytics();
 }
 
 async function refreshAlertIntegrations() {
@@ -204,7 +274,29 @@ async function refreshAgents() {
     await refreshAgentTokens(state.selectedAgentId);
   }
 
+  renderAnalyticsAgentSelector();
   renderFleet();
+}
+
+function renderAnalyticsAgentSelector() {
+  const select = document.getElementById('analytics-agent-filter');
+  if (!select) {
+    return;
+  }
+
+  const currentValue = select.value;
+  const options = Array.from(state.agentDetails.values())
+    .sort((left, right) => left.hostId.localeCompare(right.hostId))
+    .map(
+      (detail) =>
+        `<option value="${escapeHtml(detail.id)}">${escapeHtml(detail.hostId)} · ${escapeHtml(detail.hostname)}</option>`,
+    )
+    .join('');
+
+  select.innerHTML = `<option value="">all matched agents</option>${options}`;
+  if (currentValue && Array.from(select.options).some((option) => option.value === currentValue)) {
+    select.value = currentValue;
+  }
 }
 
 async function refreshAgentTokens(agentId) {
@@ -292,6 +384,13 @@ function renderAgentDrawer() {
     return;
   }
 
+  const heartbeats = detail.recentHeartbeats || [];
+  const agentMetricPoints = [...heartbeats].reverse().map((heartbeat) => ({
+    label: heartbeat.receivedAt,
+    firstValue: heartbeat.system?.cpuPercent || 0,
+    secondValue: heartbeatMemoryPercent(heartbeat.system),
+  }));
+
   document.getElementById('drawer-title').textContent = `${detail.hostId} details`;
   document.getElementById('drawer-subtitle').textContent = `${detail.hostname} · ${detail.os}`;
   document.getElementById('agent-detail').innerHTML = `
@@ -305,6 +404,20 @@ function renderAgentDrawer() {
       <h3>Latest heartbeat snapshot</h3>
       <pre class="metrics">${escapeHtml(renderMetrics(detail.latestHeartbeat?.system).replace(/<[^>]+>/g, ''))}</pre>
     </div>
+    <div class="panel top-gap panel-dark">
+      <h3>CPU / Memory history</h3>
+      <p class="muted analytics-panel-copy">Recent heartbeat snapshots for this agent.</p>
+      ${renderDualMetricChart(agentMetricPoints, {
+        title: `${detail.hostId} CPU and memory history`,
+        firstLabel: 'CPU',
+        secondLabel: 'Memory',
+        firstColor: '#38bdf8',
+        secondColor: '#a855f7',
+        gradientId: 'agent-cpu-memory-gradient',
+        maxValue: 100,
+        valueFormatter: (value) => `${Math.round(value)}%`,
+      })}
+    </div>
     <div class="panel top-gap">
       <h3>Recent heartbeats</h3>
       <table>
@@ -317,7 +430,7 @@ function renderAgentDrawer() {
           </tr>
         </thead>
         <tbody>
-          ${(detail.recentHeartbeats || [])
+          ${heartbeats
             .map((heartbeat) => `
               <tr>
                 <td>${escapeHtml(formatDate(heartbeat.receivedAt))}</td>
@@ -436,6 +549,689 @@ function renderLogs() {
     : '<div class="empty">No log events loaded yet.</div>';
 
   document.getElementById('load-more-logs').classList.toggle('hidden', !state.logsCursor);
+}
+
+function renderBar(value, max) {
+  const width = max > 0 ? Math.max(6, Math.round((value / max) * 100)) : 0;
+  return `<div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>`;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeChartPoints(values, width, height, max) {
+  if (!values.length || max <= 0) return [];
+  return values.map((value, index) => ({
+    x: values.length === 1 ? width / 2 : (index / (values.length - 1)) * width,
+    y: height - (value / max) * height,
+    value,
+    index,
+  }));
+}
+
+function createSmoothPath(points) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  const path = [`M ${points[0].x} ${points[0].y}`];
+  const tension = 0.2;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const prev = points[index - 1] ?? points[index];
+    const current = points[index];
+    const next = points[index + 1];
+    const nextNext = points[index + 2] ?? next;
+
+    const cp1x = current.x + (next.x - prev.x) * tension;
+    const cp1y = current.y + (next.y - prev.y) * tension;
+    const cp2x = next.x - (nextNext.x - current.x) * tension;
+    const cp2y = next.y - (nextNext.y - current.y) * tension;
+
+    path.push(`C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${next.x} ${next.y}`);
+  }
+
+  return path.join(' ');
+}
+
+function buildAreaPath(points, height) {
+  if (!points.length) return '';
+  const curve = createSmoothPath(points);
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `${curve} L ${last.x} ${height} L ${first.x} ${height} Z`;
+}
+
+function chartLabel(value) {
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function heartbeatMemoryPercent(system) {
+  if (!system || !system.memoryTotalBytes) {
+    return 0;
+  }
+
+  return (system.memoryUsedBytes / system.memoryTotalBytes) * 100;
+}
+
+function renderDualMetricChart(points, options) {
+  if (!points?.length) {
+    return '<div class="empty">No metric history yet.</div>';
+  }
+
+  const width = 960;
+  const height = 220;
+  const firstSeries = points.map((point) => point.firstValue || 0);
+  const secondSeries = points.map((point) => point.secondValue || 0);
+  const max = Math.max(...firstSeries, ...secondSeries, options.maxValue ?? 100, 0);
+  const firstPoints = normalizeChartPoints(firstSeries, width, height, max);
+  const secondPoints = normalizeChartPoints(secondSeries, width, height, max);
+  const firstPath = createSmoothPath(firstPoints);
+  const secondPath = createSmoothPath(secondPoints);
+  const firstArea = buildAreaPath(firstPoints, height);
+  const labels = points
+    .map((point, index) => {
+      if (index !== 0 && index !== points.length - 1 && index % Math.ceil(points.length / 6) !== 0) {
+        return '';
+      }
+
+      return `<span class="chart-x-label muted">${escapeHtml(chartLabel(point.label))}</span>`;
+    })
+    .join('');
+
+  return `
+    <div class="chart-shell agent-metric-chart-shell">
+      <div class="chart-body">
+        <div class="chart-y-axis muted">
+          ${Array.from({ length: 5 }, (_, index) => Math.round((max / 4) * (4 - index)))
+            .map((tick) => `<span>${escapeHtml(options.valueFormatter ? options.valueFormatter(tick) : formatCompactNumber(tick))}</span>`)
+            .join('')}
+        </div>
+        <div class="chart-canvas-wrap compact-chart-canvas">
+          <svg class="line-chart compact-line-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="${escapeHtml(options.title)}">
+            <defs>
+              <linearGradient id="${escapeHtml(options.gradientId)}" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="${escapeHtml(options.firstColor)}" stop-opacity="0.28" />
+                <stop offset="100%" stop-color="${escapeHtml(options.firstColor)}" stop-opacity="0.02" />
+              </linearGradient>
+            </defs>
+            ${Array.from({ length: 5 }, (_, index) => {
+              const y = (height / 4) * index;
+              return `<line x1="0" y1="${y}" x2="${width}" y2="${y}" class="chart-grid-line"></line>`;
+            }).join('')}
+            <path d="${firstArea}" fill="url(#${escapeHtml(options.gradientId)})"></path>
+            <path d="${firstPath}" class="chart-line" style="stroke:${escapeHtml(options.firstColor)}"></path>
+            <path d="${secondPath}" class="chart-line" style="stroke:${escapeHtml(options.secondColor)}"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="chart-x-axis">${labels}</div>
+      <div class="chart-legend left-legend">
+        <span class="chart-legend-item"><i class="legend-dot" style="background:${escapeHtml(options.firstColor)}"></i>${escapeHtml(options.firstLabel)}</span>
+        <span class="chart-legend-item"><i class="legend-dot" style="background:${escapeHtml(options.secondColor)}"></i>${escapeHtml(options.secondLabel)}</span>
+      </div>
+    </div>`;
+}
+
+function attachVolumeChartInteractions(points) {
+  const root = document.getElementById('analytics-log-volume-output');
+  const shell = root?.querySelector('.interactive-chart');
+  const overlay = shell?.querySelector('.chart-hover-overlay');
+  const crosshair = shell?.querySelector('.chart-crosshair');
+  const dotTotal = shell?.querySelector('.chart-active-dot-total');
+  const dotWarn = shell?.querySelector('.chart-active-dot-warn');
+  const dotError = shell?.querySelector('.chart-active-dot-error');
+  const tooltip = shell?.querySelector('.chart-tooltip');
+
+  if (!shell || !overlay || !crosshair || !dotTotal || !dotWarn || !dotError || !tooltip || !points.length) {
+    return;
+  }
+
+  let frame = 0;
+
+  const hide = () => {
+    crosshair.classList.add('hidden');
+    dotTotal.classList.add('hidden');
+    dotWarn.classList.add('hidden');
+    dotError.classList.add('hidden');
+    tooltip.classList.add('hidden');
+  };
+
+  const update = (event) => {
+    const rect = overlay.getBoundingClientRect();
+    const relativeX = clamp(event.clientX - rect.left, 0, rect.width);
+    const ratio = rect.width > 0 ? relativeX / rect.width : 0;
+    const index = clamp(Math.round(ratio * (points.length - 1)), 0, points.length - 1);
+    const point = points[index];
+    const left = `${(point.x / 960) * 100}%`;
+
+    crosshair.setAttribute('x1', String(point.x));
+    crosshair.setAttribute('x2', String(point.x));
+    crosshair.classList.remove('hidden');
+
+    [
+      [dotTotal, point.totalY],
+      [dotWarn, point.warnY],
+      [dotError, point.errorY],
+    ].forEach(([element, y]) => {
+      element.setAttribute('cx', String(point.x));
+      element.setAttribute('cy', String(y));
+      element.classList.remove('hidden');
+    });
+
+    tooltip.innerHTML = `
+      <div class="chart-tooltip-title">${escapeHtml(formatDate(point.bucketStart))}</div>
+      <div class="chart-tooltip-row"><span><i class="legend-dot legend-dot-total"></i>Total</span><strong>${escapeHtml(formatCompactNumber(point.totalLogs))}</strong></div>
+      <div class="chart-tooltip-row"><span><i class="legend-dot legend-dot-warn"></i>Warnings</span><strong>${escapeHtml(formatCompactNumber(point.warnLogs))}</strong></div>
+      <div class="chart-tooltip-row"><span><i class="legend-dot legend-dot-error"></i>Errors</span><strong>${escapeHtml(formatCompactNumber(point.errorLogs))}</strong></div>`;
+    tooltip.classList.remove('hidden');
+
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const idealLeft = event.clientX - rect.left + 18;
+    const boundedLeft = clamp(idealLeft, 12, rect.width - tooltipRect.width - 12);
+    const idealTop = event.clientY - rect.top - tooltipRect.height - 14;
+    tooltip.style.left = `${boundedLeft}px`;
+    tooltip.style.top = `${idealTop > 8 ? idealTop : 8}px`;
+    tooltip.dataset.activeIndex = String(index);
+    shell.style.setProperty('--chart-active-left', left);
+  };
+
+  overlay.onmousemove = (event) => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => update(event));
+  };
+  overlay.onmouseenter = (event) => update(event);
+  overlay.onmouseleave = () => {
+    cancelAnimationFrame(frame);
+    hide();
+  };
+
+  hide();
+}
+
+function polarToCartesian(cx, cy, radius, angle) {
+  const radians = ((angle - 90) * Math.PI) / 180;
+  return {
+    x: cx + radius * Math.cos(radians),
+    y: cy + radius * Math.sin(radians),
+  };
+}
+
+function describeArc(cx, cy, radius, startAngle, endAngle) {
+  const start = polarToCartesian(cx, cy, radius, endAngle);
+  const end = polarToCartesian(cx, cy, radius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+  return [`M`, start.x, start.y, `A`, radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(' ');
+}
+
+function renderHostDonut(logs, system) {
+  const hosts = (logs.topHosts || []).slice(0, 8);
+  if (!hosts.length) {
+    return '<div class="empty">No host analytics in this range.</div>';
+  }
+
+  const palette = ['#a855f7', '#14b8a6', '#f59e0b', '#38bdf8', '#f97316', '#ec4899', '#8b5cf6', '#22c55e'];
+  const total = hosts.reduce((sum, host) => sum + (host.count || 0), 0);
+  let angle = 0;
+  const latestMap = new Map((system.latestByHost || []).map((item) => [item.hostId, item]));
+
+  const segments = hosts.map((host, index) => {
+    const share = total > 0 ? (host.count / total) * 100 : 0;
+    const sweep = total > 0 ? (host.count / total) * 360 : 0;
+    const path = describeArc(110, 110, 74, angle, angle + sweep);
+    const segment = {
+      ...host,
+      share,
+      color: palette[index % palette.length],
+      path,
+      latest: latestMap.get(host.hostId),
+    };
+    angle += sweep;
+    return segment;
+  });
+
+  const primary = segments[0];
+
+  return `
+    <div class="hosts-analytics-layout">
+      <div class="donut-chart-card">
+        <svg class="host-donut" viewBox="0 0 220 220" aria-label="log distribution by host">
+          <circle cx="110" cy="110" r="74" class="host-donut-base"></circle>
+          ${segments.map((segment, index) => `<path d="${segment.path}" class="host-donut-segment" data-donut-host="${escapeHtml(segment.hostId)}" data-donut-index="${index}" stroke="${segment.color}" title="${escapeHtml(`${segment.hostId}: ${formatCompactNumber(segment.count)} logs (${segment.share.toFixed(1)}%)`)}"></path>`).join('')}
+          <circle cx="110" cy="110" r="52" class="host-donut-hole"></circle>
+          <text x="110" y="103" text-anchor="middle" class="host-donut-total-label">Top host</text>
+          <text x="110" y="128" text-anchor="middle" class="host-donut-total-value">${escapeHtml(primary.hostId)}</text>
+        </svg>
+      </div>
+      <div class="host-legend-list">
+        ${segments.map((segment, index) => `
+          <button class="host-legend-item" data-analytics-host="${escapeHtml(segment.hostId)}" data-donut-index="${index}">
+            <span class="host-legend-marker" style="background:${segment.color}"></span>
+            <span class="host-legend-main">
+              <strong>${escapeHtml(segment.hostId)}</strong>
+              <span class="muted">${escapeHtml(segment.latest?.hostname || 'host')}</span>
+            </span>
+            <span class="host-legend-stats">
+              <span>${escapeHtml(formatCompactNumber(segment.count))}</span>
+              <span class="muted">${escapeHtml(formatNumber(segment.share, 1))}%</span>
+            </span>
+          </button>`).join('')}
+      </div>
+      <div class="top-gap host-latest-grid">
+        ${(system.latestByHost || [])
+          .slice(0, 6)
+          .map((row) => `
+            <div class="detail-card analytics-detail-card host-mini-card">
+              <div class="row-actions host-mini-head">
+                <code>${escapeHtml(row.hostId)}</code>
+                <span class="muted">${escapeHtml(row.health)}</span>
+              </div>
+              <div class="muted">${escapeHtml(row.hostname)}</div>
+              <div class="host-mini-metrics top-gap">
+                <span>CPU ${escapeHtml(formatPercent(row.cpuPercent))}</span>
+                <span>Mem ${escapeHtml(formatPercent(row.memoryUsedPercent))}</span>
+                <span>Disk ${escapeHtml(formatPercent(row.diskUsedPercent))}</span>
+              </div>
+            </div>`)
+          .join('')}
+      </div>
+    </div>`;
+}
+
+function attachHostDonutInteractions() {
+  const root = document.getElementById('analytics-hosts-output');
+  if (!root) return;
+
+  const activate = (index, active) => {
+    root.querySelectorAll(`[data-donut-index="${index}"]`).forEach((element) => {
+      element.classList.toggle('is-active', active);
+    });
+  };
+
+  root.querySelectorAll('.host-legend-item').forEach((element) => {
+    const { donutIndex } = element.dataset;
+    element.onmouseenter = () => activate(donutIndex, true);
+    element.onmouseleave = () => activate(donutIndex, false);
+  });
+
+  root.querySelectorAll('.host-donut-segment').forEach((element) => {
+    const { donutIndex } = element.dataset;
+    element.onmouseenter = () => activate(donutIndex, true);
+    element.onmouseleave = () => activate(donutIndex, false);
+  });
+}
+
+function analyticsBars(items, valueFormatter = (value) => String(value), clickAttr = '') {
+  if (!items?.length) {
+    return '<div class="empty">No analytics data in this range.</div>';
+  }
+
+  const max = Math.max(...items.map((item) => item.count || 0), 0);
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items
+          .map((item) => `
+            <tr>
+              <td>
+                ${clickAttr
+                  ? `<button class="link-button" ${clickAttr}="${escapeHtml(item.key)}">${escapeHtml(item.key)}</button>`
+                  : escapeHtml(item.key)}
+                ${renderBar(item.count || 0, max)}
+              </td>
+              <td>${escapeHtml(valueFormatter(item.count || 0))}</td>
+            </tr>`)
+          .join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderMiniTrend(points, key, formatter = (value) => String(value)) {
+  if (!points?.length) {
+    return '<div class="empty">No timeline data in this range.</div>';
+  }
+
+  const max = Math.max(...points.map((point) => point[key] || 0), 0);
+  return `
+    <div class="trend-list">
+      ${points
+        .map((point) => `
+          <div class="trend-row">
+            <span class="muted">${escapeHtml(formatDate(point.bucketStart))}</span>
+            <div class="trend-row-main">
+              ${renderBar(point[key] || 0, max)}
+              <strong>${escapeHtml(formatter(point[key] || 0))}</strong>
+            </div>
+          </div>`)
+        .join('')}
+    </div>`;
+}
+
+function renderVolumeChart(points) {
+  if (!points?.length) {
+    return '<div class="empty">No timeline data in this range.</div>';
+  }
+
+  const width = 960;
+  const height = 260;
+  const totals = points.map((point) => point.totalLogs || 0);
+  const errors = points.map((point) => point.errorLogs || 0);
+  const warns = points.map((point) => point.warnLogs || 0);
+  const max = Math.max(...totals, ...errors, ...warns, 0);
+  const totalPoints = normalizeChartPoints(totals, width, height, max);
+  const errorPoints = normalizeChartPoints(errors, width, height, max);
+  const warnPoints = normalizeChartPoints(warns, width, height, max);
+  const totalPath = createSmoothPath(totalPoints);
+  const errorPath = createSmoothPath(errorPoints);
+  const warnPath = createSmoothPath(warnPoints);
+  const totalArea = buildAreaPath(totalPoints, height);
+  const ticks = Array.from({ length: 5 }, (_, index) => Math.round((max / 4) * (4 - index)));
+  const labels = points.map((point, index) => {
+    if (index !== 0 && index !== points.length - 1 && index % Math.ceil(points.length / 6) !== 0) return '';
+    return `<span class="chart-x-label muted">${escapeHtml(chartLabel(point.bucketStart))}</span>`;
+  }).join('');
+
+  return `
+    <div class="chart-shell interactive-chart">
+      <div class="chart-body">
+        <div class="chart-y-axis muted">
+          ${ticks.map((tick) => `<span>${escapeHtml(formatCompactNumber(tick))}</span>`).join('')}
+        </div>
+        <div class="chart-canvas-wrap">
+          <svg class="line-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-label="log volume over time">
+            <defs>
+              <linearGradient id="analytics-total-gradient" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="rgba(168, 85, 247, 0.35)" />
+                <stop offset="100%" stop-color="rgba(168, 85, 247, 0.02)" />
+              </linearGradient>
+            </defs>
+            ${Array.from({ length: 5 }, (_, index) => {
+              const y = (height / 4) * index;
+              return `<line x1="0" y1="${y}" x2="${width}" y2="${y}" class="chart-grid-line"></line>`;
+            }).join('')}
+            ${Array.from({ length: 7 }, (_, index) => {
+              const x = (width / 6) * index;
+              return `<line x1="${x}" y1="0" x2="${x}" y2="${height}" class="chart-grid-line chart-grid-line-vertical"></line>`;
+            }).join('')}
+            <path d="${totalArea}" fill="url(#analytics-total-gradient)"></path>
+            <path d="${totalPath}" class="chart-line chart-line-total"></path>
+            <path d="${warnPath}" class="chart-line chart-line-warn"></path>
+            <path d="${errorPath}" class="chart-line chart-line-error"></path>
+            <line x1="0" x2="0" y1="0" y2="${height}" class="chart-crosshair hidden"></line>
+            <circle r="5" class="chart-active-dot chart-active-dot-total hidden"></circle>
+            <circle r="5" class="chart-active-dot chart-active-dot-warn hidden"></circle>
+            <circle r="5" class="chart-active-dot chart-active-dot-error hidden"></circle>
+          </svg>
+          <div class="chart-tooltip hidden"></div>
+          <div class="chart-hover-overlay"></div>
+        </div>
+      </div>
+      <div class="chart-x-axis">${labels}</div>
+      <div class="chart-legend">
+        <span class="chart-legend-item"><i class="legend-dot legend-dot-error"></i>Errors</span>
+        <span class="chart-legend-item"><i class="legend-dot legend-dot-warn"></i>Warnings</span>
+        <span class="chart-legend-item"><i class="legend-dot legend-dot-total"></i>Total</span>
+      </div>
+    </div>`;
+}
+
+function renderHeatmap(points) {
+  if (!points?.length) {
+    return '<div class="empty">No error events in this range.</div>';
+  }
+
+  const days = [...new Set(points.map((point) => point.day))].sort();
+  const map = new Map(points.map((point) => [`${point.day}:${point.hour}`, point.errorCount]));
+  const max = Math.max(...points.map((point) => point.errorCount || 0), 0);
+
+  return `
+    <div class="heatmap-wrapper">
+      <div class="heatmap-grid">
+        <div class="heatmap-corner"></div>
+        ${Array.from({ length: 24 }, (_, hour) => `<div class="heatmap-hour muted">${hour}</div>`).join('')}
+        ${days
+          .map((day) => `
+            <div class="heatmap-day muted">${escapeHtml(new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</div>
+            ${Array.from({ length: 24 }, (_, hour) => {
+              const count = map.get(`${day}:${hour}`) || 0;
+              const alpha = max > 0 ? Math.max(0.08, count / max) : 0.08;
+              return `<div class="heatmap-cell" title="${escapeHtml(`${day} ${String(hour).padStart(2, '0')}:00 • ${count} errors`)}" style="background: rgba(248, 113, 113, ${alpha});"></div>`;
+            }).join('')}`)
+          .join('')}
+      </div>
+      <div class="heatmap-scale muted">
+        <span>Less</span>
+        <div class="heatmap-scale-dots">
+          <i class="heatmap-scale-dot" style="background: rgba(248, 113, 113, 0.12)"></i>
+          <i class="heatmap-scale-dot" style="background: rgba(248, 113, 113, 0.32)"></i>
+          <i class="heatmap-scale-dot" style="background: rgba(248, 113, 113, 0.56)"></i>
+          <i class="heatmap-scale-dot" style="background: rgba(248, 113, 113, 0.9)"></i>
+        </div>
+        <span>More</span>
+      </div>
+    </div>`;
+}
+
+function renderTopErrors(items) {
+  if (!items?.length) {
+    return '<div class="empty">No repeated error messages in this range.</div>';
+  }
+
+  const max = Math.max(...items.map((item) => item.count || 0), 0);
+  return `
+    <div class="top-errors-list">
+      ${items
+        .map((item, index) => `
+          <div class="top-error-row">
+            <div class="top-error-header">
+              <div class="top-error-rank">${index + 1}</div>
+              <div>
+                <button class="link-button top-error-link" data-analytics-error-message="${escapeHtml(item.message)}">${escapeHtml(item.message)}</button>
+                <div class="muted top-error-meta">Last seen ${escapeHtml(formatDate(item.lastSeenAt))}</div>
+              </div>
+              <strong>${escapeHtml(formatCompactNumber(item.count))}</strong>
+            </div>
+            <div class="top-error-progress">
+              ${renderBar(item.count || 0, max)}
+            </div>
+          </div>`)
+        .join('')}
+    </div>`;
+}
+
+function percentDelta(current, previous) {
+  if (!previous) {
+    return current > 0 ? 100 : 0;
+  }
+  return ((current - previous) / previous) * 100;
+}
+
+function renderDeltaPill(current, previous) {
+  const delta = percentDelta(current, previous);
+  const cls = delta >= 0 ? 'delta-up' : 'delta-down';
+  const sign = delta >= 0 ? '+' : '';
+  return `<span class="delta-pill ${cls}">${sign}${formatNumber(delta, 1)}%</span>`;
+}
+
+function renderVolumeComparison(logs) {
+  if (!logs?.comparison || !logs?.volumeComparison?.length) {
+    return '<div class="empty">No comparison data in this range.</div>';
+  }
+
+  const max = Math.max(
+    ...logs.volumeComparison.flatMap((point) => [point.currentTotalLogs || 0, point.previousTotalLogs || 0]),
+    0,
+  );
+
+  return `
+    <div class="comparison-grid">
+      <div class="detail-grid">
+        <div class="detail-card">
+          <span class="muted">Current window logs</span>
+          <strong>${escapeHtml(formatCompactNumber(logs.comparison.currentTotalLogs))}</strong>
+          <div class="top-gap">${renderDeltaPill(logs.comparison.currentTotalLogs, logs.comparison.previousTotalLogs)} <span class="muted">vs previous window</span></div>
+        </div>
+        <div class="detail-card">
+          <span class="muted">Current window errors</span>
+          <strong>${escapeHtml(formatCompactNumber(logs.comparison.currentErrorLogs))}</strong>
+          <div class="top-gap">${renderDeltaPill(logs.comparison.currentErrorLogs, logs.comparison.previousErrorLogs)} <span class="muted">vs previous window</span></div>
+        </div>
+      </div>
+      <div class="comparison-columns top-gap">
+        ${logs.volumeComparison
+          .map((point) => `
+            <div class="comparison-column" title="${escapeHtml(`${formatDate(point.bucketStart)} • current ${point.currentTotalLogs || 0}, previous ${point.previousTotalLogs || 0}`)}">
+              <div class="comparison-column-bars">
+                <div class="comparison-column-bar comparison-column-bar-previous" style="height:${max > 0 ? Math.max(6, ((point.previousTotalLogs || 0) / max) * 100) : 0}%"></div>
+                <div class="comparison-column-bar comparison-column-bar-current" style="height:${max > 0 ? Math.max(6, ((point.currentTotalLogs || 0) / max) * 100) : 0}%"></div>
+              </div>
+              <span class="comparison-column-label muted">${escapeHtml(new Date(point.bucketStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span>
+            </div>`)
+          .join('')}
+      </div>
+      <div class="chart-legend">
+        <span class="chart-legend-item"><i class="legend-dot legend-dot-previous"></i>Previous</span>
+        <span class="chart-legend-item"><i class="legend-dot legend-dot-total"></i>Current</span>
+      </div>
+    </div>`;
+}
+
+function renderAnalytics() {
+  const overview = state.analyticsOverview;
+  const logs = state.analyticsLogs;
+  const system = state.analyticsSystem;
+
+  if (!overview || !logs || !system) {
+    document.getElementById('analytics-kpis').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-overview-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-log-volume-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-heatmap-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-top-errors-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-comparison-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-cpu-memory-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-system-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    document.getElementById('analytics-hosts-output').innerHTML = '<div class="empty">Loading analytics…</div>';
+    return;
+  }
+
+  document.getElementById('analytics-kpis').innerHTML = [
+    ['Logs', formatCompactNumber(overview.totals.totalLogs)],
+    ['Errors', formatCompactNumber(overview.totals.errorLogs)],
+    ['Active agents', overview.totals.activeAgents],
+    ['Avg CPU', formatPercent(overview.totals.avgCpuPercent)],
+    ['Avg memory', formatPercent(overview.totals.avgMemoryUsedPercent)],
+    ['Avg disk', formatPercent(overview.totals.avgDiskUsedPercent)],
+  ]
+    .map(([label, value]) => `<div class="kpi"><span class="muted">${label}</span><strong>${value}</strong></div>`)
+    .join('');
+
+  document.getElementById('analytics-overview-output').innerHTML = `
+    <div class="detail-grid analytics-overview-grid">
+      <div class="detail-card analytics-detail-card"><span class="muted">Window</span><strong>${escapeHtml(formatDate(overview.startAt))}</strong><div class="muted">to ${escapeHtml(formatDate(overview.endAt))}</div></div>
+      <div class="detail-card analytics-detail-card"><span class="muted">Matched agents</span><strong>${escapeHtml(String(overview.totals.matchedAgents))}</strong><div class="muted">Across ${escapeHtml(String(overview.totals.matchedHosts))} host(s)</div></div>
+      <div class="detail-card analytics-detail-card"><span class="muted">Heartbeat samples</span><strong>${escapeHtml(String(overview.totals.heartbeatSamples))}</strong><div class="muted">${escapeHtml(String(overview.totals.unhealthyHeartbeats))} unhealthy</div></div>
+      <div class="detail-card analytics-detail-card"><span class="muted">Warnings</span><strong>${escapeHtml(formatCompactNumber(overview.totals.warnLogs))}</strong><div class="muted">Generated ${escapeHtml(formatDate(overview.generatedAt))}</div></div>
+    </div>`;
+
+  document.getElementById('analytics-log-volume-output').innerHTML = renderVolumeChart(logs.volume);
+  document.getElementById('analytics-heatmap-output').innerHTML = renderHeatmap(logs.errorHeatmap);
+  document.getElementById('analytics-top-errors-output').innerHTML = renderTopErrors(logs.topErrorMessages);
+  document.getElementById('analytics-comparison-output').innerHTML = renderVolumeComparison(logs);
+
+  const analyticsAgentId = document.getElementById('analytics-agent-filter')?.value.trim();
+  const analyticsHostId = document.getElementById('analytics-host-filter')?.value.trim();
+  let cpuMemoryScope = 'Fleet average CPU and memory usage for matched agents.';
+  if (analyticsAgentId) {
+    cpuMemoryScope = `Selected agent: ${analyticsAgentId}`;
+  } else if (analyticsHostId) {
+    cpuMemoryScope = `Host average for ${analyticsHostId}`;
+  }
+  document.getElementById('analytics-cpu-memory-copy').textContent = cpuMemoryScope;
+  document.getElementById('analytics-cpu-memory-output').innerHTML = renderDualMetricChart(
+    system.timeline.map((point) => ({
+      label: point.bucketStart,
+      firstValue: point.avgCpuPercent,
+      secondValue: point.avgMemoryUsedPercent,
+    })),
+    {
+      title: 'Analytics CPU and memory trend',
+      firstLabel: 'CPU',
+      secondLabel: 'Memory',
+      firstColor: '#38bdf8',
+      secondColor: '#a855f7',
+      gradientId: 'analytics-cpu-memory-gradient',
+      maxValue: 100,
+      valueFormatter: (value) => `${Math.round(value)}%`,
+    },
+  );
+
+  document.getElementById('analytics-system-output').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-card analytics-detail-card"><span class="muted">Avg CPU</span><strong>${escapeHtml(formatPercent(system.summary.avgCpuPercent))}</strong><div class="muted">Peak ${escapeHtml(formatPercent(system.summary.maxCpuPercent))}</div></div>
+      <div class="detail-card analytics-detail-card"><span class="muted">Avg memory</span><strong>${escapeHtml(formatPercent(system.summary.avgMemoryUsedPercent))}</strong><div class="muted">Peak ${escapeHtml(formatPercent(system.summary.maxMemoryUsedPercent))}</div></div>
+      <div class="detail-card analytics-detail-card"><span class="muted">Avg disk</span><strong>${escapeHtml(formatPercent(system.summary.avgDiskUsedPercent))}</strong><div class="muted">Peak ${escapeHtml(formatPercent(system.summary.maxDiskUsedPercent))}</div></div>
+      <div class="detail-card analytics-detail-card"><span class="muted">Samples</span><strong>${escapeHtml(formatCompactNumber(system.summary.sampleCount))}</strong><div class="muted">${escapeHtml(String(system.summary.unhealthySamples))} unhealthy</div></div>
+    </div>
+    <div class="top-gap">
+      <h4>CPU trend</h4>
+      ${renderMiniTrend(system.timeline, 'avgCpuPercent', formatPercent)}
+    </div>`;
+
+  document.getElementById('analytics-hosts-output').innerHTML = renderHostDonut(logs, system);
+
+  const chartWidth = 960;
+  const chartHeight = 260;
+  const chartTotals = logs.volume.map((point) => point.totalLogs || 0);
+  const chartErrors = logs.volume.map((point) => point.errorLogs || 0);
+  const chartWarns = logs.volume.map((point) => point.warnLogs || 0);
+  const chartMax = Math.max(...chartTotals, ...chartErrors, ...chartWarns, 0);
+  const totalChartPoints = normalizeChartPoints(chartTotals, chartWidth, chartHeight, chartMax);
+  const errorChartPoints = normalizeChartPoints(chartErrors, chartWidth, chartHeight, chartMax);
+  const warnChartPoints = normalizeChartPoints(chartWarns, chartWidth, chartHeight, chartMax);
+  const interactivePoints = logs.volume.map((point, index) => ({
+    ...point,
+    x: totalChartPoints[index]?.x ?? 0,
+    totalY: totalChartPoints[index]?.y ?? chartHeight,
+    warnY: warnChartPoints[index]?.y ?? chartHeight,
+    errorY: errorChartPoints[index]?.y ?? chartHeight,
+  }));
+
+  attachVolumeChartInteractions(interactivePoints);
+  attachHostDonutInteractions();
+
+  document.querySelectorAll('[data-analytics-level]').forEach((button) => {
+    button.onclick = () => {
+      document.getElementById('logs-level').value = button.dataset.analyticsLevel;
+      setSection('logs');
+      void runLogSearch(true);
+    };
+  });
+
+  document.querySelectorAll('[data-analytics-host]').forEach((button) => {
+    button.onclick = () => {
+      const hostId = button.dataset.analyticsHost;
+      document.getElementById('logs-host-id').value = hostId;
+      document.getElementById('agent-search').value = hostId;
+      document.getElementById('analytics-host-filter').value = hostId;
+      setSection('logs');
+      void runLogSearch(true);
+    };
+  });
+
+  document.querySelectorAll('[data-analytics-error-message]').forEach((button) => {
+    button.onclick = () => {
+      document.getElementById('logs-query').value = button.dataset.analyticsErrorMessage;
+      document.getElementById('logs-level').value = 'error';
+      setSection('logs');
+      void runLogSearch(true);
+    };
+  });
 }
 
 function renderEnrollmentTokens() {
@@ -780,7 +1576,7 @@ document.getElementById('login-button').onclick = async () => {
         password: document.getElementById('password').value,
       }),
     });
-    await refreshSession();
+    window.location.replace('/admin/');
   } catch (error) {
     loginError.textContent = error.message;
   }
@@ -801,6 +1597,8 @@ document.getElementById('refresh-button').onclick = async () => {
     await refreshAgents();
   } else if (state.activeSection === 'logs') {
     await runLogSearch(true);
+  } else if (state.activeSection === 'analytics') {
+    await refreshAnalytics();
   } else if (state.activeSection === 'alerts') {
     await Promise.all([
       refreshAlertIntegrations(),
@@ -821,6 +1619,10 @@ document.getElementById('apply-agent-filters').onclick = async () => {
 
 document.getElementById('search-logs').onclick = async () => {
   await runLogSearch(true);
+};
+
+document.getElementById('apply-analytics-filters').onclick = async () => {
+  await refreshAnalytics();
 };
 
 document.getElementById('load-more-logs').onclick = async () => {

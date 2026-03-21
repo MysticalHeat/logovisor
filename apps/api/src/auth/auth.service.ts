@@ -14,7 +14,11 @@ const COOKIE_NAME = 'logovisor_operator_session';
 export class AuthService {
   constructor(private readonly configService: ConfigService) {}
 
-  login(username: string, password: string, response: Response): OperatorIdentity {
+  login(
+    username: string,
+    password: string,
+    response: Response,
+  ): OperatorIdentity {
     const configuredUsername =
       this.configService.get<string>('LOGOVISOR_OPERATOR_USERNAME') ?? 'admin';
 
@@ -25,8 +29,9 @@ export class AuthService {
     const identity = { username };
     const signOptions: SignOptions = {
       expiresIn: Number(
-        this.configService.get<string>('LOGOVISOR_OPERATOR_JWT_EXPIRES_IN_SECONDS') ??
-          '28800',
+        this.configService.get<string>(
+          'LOGOVISOR_OPERATOR_JWT_EXPIRES_IN_SECONDS',
+        ) ?? '28800',
       ),
       subject: username,
     };
@@ -36,8 +41,8 @@ export class AuthService {
       httpOnly: true,
       sameSite: 'strict',
       secure:
-        (this.configService.get<string>('LOGOVISOR_OPERATOR_COOKIE_SECURE') ?? 'false') ===
-        'true',
+        (this.configService.get<string>('LOGOVISOR_OPERATOR_COOKIE_SECURE') ??
+          'false') === 'true',
       path: '/',
     });
 
@@ -66,13 +71,17 @@ export class AuthService {
   }
 
   private isPasswordValid(password: string): boolean {
-    const hash = this.configService.get<string>('LOGOVISOR_OPERATOR_PASSWORD_HASH');
+    const hash = this.configService.get<string>(
+      'LOGOVISOR_OPERATOR_PASSWORD_HASH',
+    );
     const plain = this.configService.get<string>('LOGOVISOR_OPERATOR_PASSWORD');
 
     if (hash) {
       const parts = hash.split(':');
       if (parts.length !== 3 || parts[0] !== 'scrypt') {
-        throw new Error('LOGOVISOR_OPERATOR_PASSWORD_HASH must be scrypt:<salt>:<hash>');
+        throw new Error(
+          'LOGOVISOR_OPERATOR_PASSWORD_HASH must be scrypt:<salt>:<hash>',
+        );
       }
 
       const derived = scryptSync(password, parts[1], 64).toString('hex');
@@ -89,7 +98,9 @@ export class AuthService {
   }
 
   private getJwtSecret(): Secret {
-    const secret = this.configService.get<string>('LOGOVISOR_OPERATOR_JWT_SECRET');
+    const secret = this.configService.get<string>(
+      'LOGOVISOR_OPERATOR_JWT_SECRET',
+    );
     if (!secret) {
       throw new Error('LOGOVISOR_OPERATOR_JWT_SECRET is required');
     }

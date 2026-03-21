@@ -8,7 +8,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { ClickhouseService, quoteSqlString } from '../clickhouse/clickhouse.service';
+import {
+  ClickhouseService,
+  quoteSqlString,
+} from '../clickhouse/clickhouse.service';
 import { DatabaseService } from '../database/database.service';
 import * as schema from '../database/schema';
 import { decryptSecret, encryptSecret } from '../shared/token.util';
@@ -117,7 +120,8 @@ export class AlertsService {
     const nextName = input.name?.trim() || existing.name;
     const nextToken = input.botToken?.trim();
     const nextChatId = input.chatId?.trim() || existing.chatId;
-    const nextThreadId = input.threadId !== undefined ? input.threadId || null : existing.threadId;
+    const nextThreadId =
+      input.threadId !== undefined ? input.threadId || null : existing.threadId;
 
     try {
       await this.databaseService.db
@@ -127,7 +131,9 @@ export class AlertsService {
           botTokenEncrypted: nextToken
             ? encryptSecret(nextToken, secret)
             : existing.botTokenEncrypted,
-          tokenPreview: nextToken ? `${nextToken.slice(0, 8)}***` : existing.tokenPreview,
+          tokenPreview: nextToken
+            ? `${nextToken.slice(0, 8)}***`
+            : existing.tokenPreview,
           chatId: nextChatId,
           threadId: nextThreadId,
           enabled:
@@ -151,7 +157,9 @@ export class AlertsService {
     return { id: integrationId };
   }
 
-  async deleteTelegramIntegration(integrationId: string): Promise<{ ok: boolean }> {
+  async deleteTelegramIntegration(
+    integrationId: string,
+  ): Promise<{ ok: boolean }> {
     await this.databaseService.ensureInitialized();
     await this.ensureNoRulesUseIntegration(integrationId);
     await this.databaseService.db
@@ -175,10 +183,19 @@ export class AlertsService {
     }
 
     const secret = this.getAlertsEncryptionSecret();
-    const botToken = decryptSecret(integration.botTokenEncrypted, secret);
+    let botToken: string;
+    try {
+      botToken = decryptSecret(integration.botTokenEncrypted, secret);
+    } catch (error) {
+      throw new BadRequestException(
+        mapTelegramSecretError(error, integration.name),
+      );
+    }
     const body = {
       chat_id: integration.chatId,
-      ...(integration.threadId ? { message_thread_id: Number(integration.threadId) } : {}),
+      ...(integration.threadId
+        ? { message_thread_id: Number(integration.threadId) }
+        : {}),
       text: `logovisor test message for integration ${integration.name}`,
     };
 
@@ -202,7 +219,12 @@ export class AlertsService {
     } catch (error) {
       return {
         ok: false,
-        errors: [{ message: error instanceof Error ? error.message : 'Failed to parse DSL' }],
+        errors: [
+          {
+            message:
+              error instanceof Error ? error.message : 'Failed to parse DSL',
+          },
+        ],
         warnings: [],
       };
     }
@@ -255,7 +277,9 @@ export class AlertsService {
     const [integration] = await this.databaseService.db
       .select()
       .from(schema.telegramIntegrations)
-      .where(eq(schema.telegramIntegrations.name, parsed.compiledRule.notify.target))
+      .where(
+        eq(schema.telegramIntegrations.name, parsed.compiledRule.notify.target),
+      )
       .limit(1);
 
     if (!integration) {
@@ -315,7 +339,9 @@ export class AlertsService {
     const [integration] = await this.databaseService.db
       .select()
       .from(schema.telegramIntegrations)
-      .where(eq(schema.telegramIntegrations.name, parsed.compiledRule.notify.target))
+      .where(
+        eq(schema.telegramIntegrations.name, parsed.compiledRule.notify.target),
+      )
       .limit(1);
 
     if (!integration) {
@@ -541,7 +567,11 @@ export class AlertsService {
 
     await this.databaseService.db
       .update(schema.alertIncidents)
-      .set({ status: 'resolved', resolvedAt: new Date(), updatedAt: new Date() })
+      .set({
+        status: 'resolved',
+        resolvedAt: new Date(),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.alertIncidents.id, incidentId));
 
     return { ok: true };
@@ -605,10 +635,7 @@ export class AlertsService {
     return { ok: true };
   }
 
-  async previewRule(input: {
-    dslText: string;
-    limit?: number;
-  }): Promise<{
+  async previewRule(input: { dslText: string; limit?: number }): Promise<{
     ok: boolean;
     explanation?: string;
     matches: Array<Record<string, unknown>>;
@@ -631,7 +658,10 @@ export class AlertsService {
       };
     }
 
-    const matches = await this.previewHeartbeatRule(compiled, input.limit ?? 20);
+    const matches = await this.previewHeartbeatRule(
+      compiled,
+      input.limit ?? 20,
+    );
     return {
       ok: true,
       explanation: parsed.explanation,
@@ -658,12 +688,18 @@ export class AlertsService {
         whereClauses.push(
           `${column} IN (${clause.value.map((value) => `'${String(value).replaceAll("'", "\\'")}'`).join(', ')})`,
         );
-      } else if (clause.operator === 'contains' && typeof clause.value === 'string') {
+      } else if (
+        clause.operator === 'contains' &&
+        typeof clause.value === 'string'
+      ) {
         whereClauses.push(
           `positionCaseInsensitive(${column}, '${clause.value.replaceAll("'", "\\'")}') > 0`,
         );
       } else {
-        const value = typeof clause.value === 'number' ? String(clause.value) : `'${String(clause.value).replaceAll("'", "\\'")}'`;
+        const value =
+          typeof clause.value === 'number'
+            ? String(clause.value)
+            : `'${String(clause.value).replaceAll("'", "\\'")}'`;
         whereClauses.push(`${column} ${clause.operator} ${value}`);
       }
     }
@@ -726,15 +762,36 @@ export class AlertsService {
       }));
   }
 
-  private async ensureNoRulesUseIntegration(integrationId: string): Promise<void> {
+  private async ensureNoRulesUseIntegration(
+    integrationId: string,
+  ): Promise<void> {
     const rows = await this.databaseService.db
       .select()
       .from(schema.alertRules)
       .where(eq(schema.alertRules.integrationId, integrationId));
     if (rows.length > 0) {
-      throw new ConflictException('cannot delete integration while rules still use it');
+      throw new ConflictException(
+        'cannot delete integration while rules still use it',
+      );
     }
   }
+}
+
+function mapTelegramSecretError(error: unknown, integrationName: string): string {
+  if (
+    error instanceof Error &&
+    error.message === 'Unsupported state or unable to authenticate data'
+  ) {
+    return `telegram integration "${integrationName}" cannot be decrypted; re-enter the bot token and save the integration again`;
+  }
+
+  if (error instanceof Error && error.message === 'invalid encrypted secret payload') {
+    return `telegram integration "${integrationName}" has an invalid stored bot token; re-enter the bot token and save the integration again`;
+  }
+
+  return error instanceof Error
+    ? error.message
+    : 'failed to decrypt telegram bot token';
 }
 
 function matchesPreviewHeartbeatRule(
@@ -749,11 +806,17 @@ function matchesPreviewHeartbeatRule(
 ): boolean {
   const windowMs = (rule.windowSeconds ?? 0) * 1000;
   if (rule.trigger.kind === 'missing') {
-    if (Date.now() - new Date(row.last_seen_at).getTime() < rule.trigger.durationSeconds * 1000) {
+    if (
+      Date.now() - new Date(row.last_seen_at).getTime() <
+      rule.trigger.durationSeconds * 1000
+    ) {
       return false;
     }
   } else if (row.received_at) {
-    if (windowMs > 0 && Date.now() - new Date(row.received_at).getTime() > windowMs) {
+    if (
+      windowMs > 0 &&
+      Date.now() - new Date(row.received_at).getTime() > windowMs
+    ) {
       return false;
     }
   }

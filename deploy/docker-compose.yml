@@ -104,6 +104,10 @@ services:
       - 'traefik.http.routers.logovisor-admin-ui.tls=true'
       - 'traefik.http.routers.logovisor-admin-ui.tls.certresolver=letsencrypt'
       - 'traefik.http.routers.logovisor-admin-ui.priority=90'
+      - 'traefik.http.middlewares.logovisor-admin-slash.redirectregex.regex=^https://([^/]+)/admin$$'
+      - 'traefik.http.middlewares.logovisor-admin-slash.redirectregex.replacement=https://$${1}/admin/'
+      - 'traefik.http.middlewares.logovisor-admin-slash.redirectregex.permanent=true'
+      - 'traefik.http.routers.logovisor-admin-ui.middlewares=logovisor-admin-slash'
       - 'traefik.http.services.logovisor-api.loadbalancer.server.port=3000'
     healthcheck:
       test:

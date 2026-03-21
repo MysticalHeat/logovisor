@@ -6,7 +6,12 @@ const clients = new Map<string, Telegraf>();
 export async function sendTelegramRequest(
   token: string,
   payload: Record<string, unknown>,
-): Promise<{ ok: boolean; status: number; text: string; providerMessageId?: string }> {
+): Promise<{
+  ok: boolean;
+  status: number;
+  text: string;
+  providerMessageId?: string;
+}> {
   const bot = getTelegramBot(token);
 
   try {
@@ -17,7 +22,9 @@ export async function sendTelegramRequest(
         ...(payload.message_thread_id
           ? { message_thread_id: Number(payload.message_thread_id) }
           : {}),
-        ...(payload.parse_mode === 'HTML' ? { parse_mode: 'HTML' as const } : {}),
+        ...(payload.parse_mode === 'HTML'
+          ? { parse_mode: 'HTML' as const }
+          : {}),
       },
     );
 
@@ -28,7 +35,8 @@ export async function sendTelegramRequest(
       providerMessageId: String(response.message_id),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'telegram send failed';
+    const message =
+      error instanceof Error ? error.message : 'telegram send failed';
     return {
       ok: false,
       status: 500,
