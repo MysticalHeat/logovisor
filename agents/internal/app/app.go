@@ -66,7 +66,12 @@ func (a *App) Run() error {
 		return err
 	}
 
-	agentID, agentToken, err := a.resolveAgentCredentials(installationID)
+	hostname, err := resolveHostname(a.cfg.HostnamePath)
+	if err != nil {
+		return err
+	}
+
+	agentID, agentToken, err := a.resolveAgentCredentials(installationID, hostname)
 	if err != nil {
 		return err
 	}
@@ -76,6 +81,7 @@ func (a *App) Run() error {
 	senderRunner := sender.New(
 		cfg.MasterURL,
 		agentToken,
+		hostname,
 		a.queue,
 		cfg.BatchSize,
 		cfg.FlushInterval,
@@ -154,7 +160,10 @@ func (a *App) Stop() {
 	})
 }
 
-func (a *App) resolveAgentCredentials(installationID string) (string, string, error) {
+func (a *App) resolveAgentCredentials(
+	installationID string,
+	hostname string,
+) (string, string, error) {
 	agentID, _, err := a.queue.GetState(agentIDStateKey)
 	if err != nil {
 		return "", "", err
@@ -171,11 +180,6 @@ func (a *App) resolveAgentCredentials(installationID string) (string, string, er
 
 	if a.cfg.BootstrapToken == "" {
 		return "", "", errors.New("missing bootstrap token and no persisted runtime token found")
-	}
-
-	hostname, err := resolveHostname(a.cfg.HostnamePath)
-	if err != nil {
-		return "", "", err
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}

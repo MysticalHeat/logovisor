@@ -69,6 +69,11 @@ class HeartbeatDto {
   @IsString()
   health?: string;
 
+  @ApiPropertyOptional({ example: 'hackathonrnd-1-19.aeza.network' })
+  @IsOptional()
+  @IsString()
+  hostname?: string;
+
   @ApiPropertyOptional({ example: 3 })
   @IsOptional()
   @IsNumber()
@@ -253,7 +258,10 @@ export class AgentsController {
 
     await this.databaseService.db
       .update(schema.agents)
-      .set({ lastSeenAt: new Date() })
+      .set({
+        lastSeenAt: new Date(),
+        ...(heartbeatDto.hostname ? { hostname: heartbeatDto.hostname } : {}),
+      })
       .where(eq(schema.agents.id, tokenRecord.agentId));
 
     this.monitoringService.recordHeartbeat(true);

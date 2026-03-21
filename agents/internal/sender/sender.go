@@ -25,6 +25,7 @@ type Queue interface {
 type Sender struct {
 	masterURL         string
 	agentToken        string
+	hostname          string
 	queue             Queue
 	client            *http.Client
 	batchSize         int
@@ -41,12 +42,14 @@ type logPayload struct {
 type heartbeatPayload struct {
 	Health     string                `json:"health"`
 	QueueDepth int64                 `json:"queueDepth"`
+	Hostname   string                `json:"hostname,omitempty"`
 	System     *hostmetrics.Snapshot `json:"system,omitempty"`
 }
 
 func New(
 	masterURL string,
 	agentToken string,
+	hostname string,
 	queue Queue,
 	batchSize int,
 	flushInterval, heartbeatInterval time.Duration,
@@ -55,6 +58,7 @@ func New(
 	return &Sender{
 		masterURL:         masterURL,
 		agentToken:        agentToken,
+		hostname:          hostname,
 		queue:             queue,
 		client:            &http.Client{Timeout: 10 * time.Second},
 		batchSize:         batchSize,
@@ -168,6 +172,7 @@ func (s *Sender) sendHeartbeat(ctx context.Context) {
 	payloadBytes, err := json.Marshal(heartbeatPayload{
 		Health:     "healthy",
 		QueueDepth: queueDepth,
+		Hostname:   s.hostname,
 		System:     collectMetrics(s.metricsCollector),
 	})
 	if err != nil {
