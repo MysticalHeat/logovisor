@@ -3,15 +3,18 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/nomli/logovisor/agents/internal/config"
 	"github.com/nomli/logovisor/agents/internal/enroll"
+	"github.com/nomli/logovisor/agents/internal/hostmetrics"
 	"github.com/nomli/logovisor/agents/internal/journald"
 	"github.com/nomli/logovisor/agents/internal/queue"
 	"github.com/nomli/logovisor/agents/internal/sender"
@@ -77,6 +80,13 @@ func (a *App) Run() error {
 		cfg.BatchSize,
 		cfg.FlushInterval,
 		cfg.HeartbeatInterval,
+		hostmetrics.New(hostmetrics.Config{
+			Enable:   true,
+			ProcPath: cfg.HostProcPath,
+			SysPath:  cfg.HostSysPath,
+			RootFS:   cfg.HostRootFSPath,
+			DiskPath: cfg.HostDiskPath,
+		}),
 	)
 
 	var waitGroup sync.WaitGroup
@@ -163,7 +173,7 @@ func (a *App) resolveAgentCredentials(installationID string) (string, string, er
 		return "", "", errors.New("missing bootstrap token and no persisted runtime token found")
 	}
 
-	hostname, err := os.Hostname()
+	hostname, err := resolveHostname(a.cfg.HostnamePath)
 	if err != nil {
 		return "", "", err
 	}
@@ -194,4 +204,25 @@ func (a *App) resolveAgentCredentials(installationID string) (string, string, er
 	}
 
 	return enrollResponse.AgentID, enrollResponse.AgentToken, nil
+}
+
+func resolveHostname(hostnamePath string) (string, error) {
+	if hostnamePath != "" {
+		data, err := os.ReadFile(hostnamePath)
+		if err == nil {
+			hostname := strings.TrimSpace(string(data))
+			if hostname != "" {
+				return hostname, nil
+			}
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("read hostname file: %w", err)
+		}
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+
+	return hostname, nil
 }

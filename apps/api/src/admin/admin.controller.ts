@@ -155,6 +155,53 @@ class AgentsListResponseDto {
   count: number;
 }
 
+class HostSystemMetricsDto {
+  @ApiProperty({ example: 12.5 })
+  cpuPercent: number;
+
+  @ApiProperty({ example: 0.42 })
+  load1: number;
+
+  @ApiProperty({ example: 0.31 })
+  load5: number;
+
+  @ApiProperty({ example: 0.18 })
+  load15: number;
+
+  @ApiProperty({ example: 17179869184 })
+  memoryTotalBytes: number;
+
+  @ApiProperty({ example: 8589934592 })
+  memoryAvailableBytes: number;
+
+  @ApiProperty({ example: 8589934592 })
+  memoryUsedBytes: number;
+
+  @ApiProperty({ example: 2147483648 })
+  swapTotalBytes: number;
+
+  @ApiProperty({ example: 268435456 })
+  swapUsedBytes: number;
+
+  @ApiProperty({ example: 274877906944 })
+  diskTotalBytes: number;
+
+  @ApiProperty({ example: 137438953472 })
+  diskUsedBytes: number;
+
+  @ApiProperty({ example: 137438953472 })
+  diskFreeBytes: number;
+
+  @ApiProperty({ example: 123456789 })
+  networkRxBytes: number;
+
+  @ApiProperty({ example: 987654321 })
+  networkTxBytes: number;
+
+  @ApiProperty({ example: 86400.5 })
+  uptimeSeconds: number;
+}
+
 class HeartbeatSnapshotDto {
   @ApiProperty({ example: '2026-03-21T10:35:03.000Z' })
   receivedAt: string;
@@ -172,12 +219,8 @@ class HeartbeatSnapshotDto {
   })
   payload: Record<string, unknown> | null;
 
-  @ApiProperty({
-    type: 'object',
-    additionalProperties: true,
-    example: { cpuPercent: 12.5 },
-  })
-  system: Record<string, unknown> | null;
+  @ApiPropertyOptional({ type: HostSystemMetricsDto })
+  system: HostSystemMetricsDto | null;
 }
 
 class AgentDetailDto extends AgentSummaryDto {
@@ -592,14 +635,43 @@ function toHeartbeatSnapshot(
   heartbeat: typeof schema.heartbeatHistory.$inferSelect,
 ): HeartbeatSnapshotDto {
   const payload = isRecord(heartbeat.payload) ? heartbeat.payload : {};
+  const system = toHostSystemMetrics(payload.system);
   return {
     receivedAt: heartbeat.receivedAt.toISOString(),
     health: typeof payload.health === 'string' ? payload.health : 'unknown',
     queueDepth:
       typeof payload.queueDepth === 'number' ? payload.queueDepth : 0,
     payload: isRecord(payload.payload) ? payload.payload : null,
-    system: isRecord(payload.system) ? payload.system : null,
+    system,
   };
+}
+
+function toHostSystemMetrics(value: unknown): HostSystemMetricsDto | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    cpuPercent: toNumber(value.cpuPercent),
+    load1: toNumber(value.load1),
+    load5: toNumber(value.load5),
+    load15: toNumber(value.load15),
+    memoryTotalBytes: toNumber(value.memoryTotalBytes),
+    memoryAvailableBytes: toNumber(value.memoryAvailableBytes),
+    memoryUsedBytes: toNumber(value.memoryUsedBytes),
+    swapTotalBytes: toNumber(value.swapTotalBytes),
+    swapUsedBytes: toNumber(value.swapUsedBytes),
+    diskTotalBytes: toNumber(value.diskTotalBytes),
+    diskUsedBytes: toNumber(value.diskUsedBytes),
+    diskFreeBytes: toNumber(value.diskFreeBytes),
+    networkRxBytes: toNumber(value.networkRxBytes),
+    networkTxBytes: toNumber(value.networkTxBytes),
+    uptimeSeconds: toNumber(value.uptimeSeconds),
+  };
+}
+
+function toNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 function isAgentOnline(lastSeenAt: Date): boolean {

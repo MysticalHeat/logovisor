@@ -35,6 +35,20 @@ services:
         read_only: true
         bind:
           create_host_path: true
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind:
+          create_host_path: true
+      - '/etc/hostname:/host/etc/hostname:ro'
+      - '/:/hostfs:ro'
       - '/etc/machine-id:/etc/machine-id:ro'
       - agent-data:/var/lib/logovisor
 

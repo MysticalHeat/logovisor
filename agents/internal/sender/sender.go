@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nomli/logovisor/agents/internal/hostmetrics"
 	"github.com/nomli/logovisor/agents/internal/queue"
 )
 
@@ -29,6 +30,7 @@ type Sender struct {
 	batchSize         int
 	flushInterval     time.Duration
 	heartbeatInterval time.Duration
+	metricsCollector  *hostmetrics.Collector
 }
 
 type logPayload struct {
@@ -37,8 +39,9 @@ type logPayload struct {
 }
 
 type heartbeatPayload struct {
-	Health     string `json:"health"`
-	QueueDepth int64  `json:"queueDepth"`
+	Health     string                `json:"health"`
+	QueueDepth int64                 `json:"queueDepth"`
+	System     *hostmetrics.Snapshot `json:"system,omitempty"`
 }
 
 func New(
@@ -47,6 +50,7 @@ func New(
 	queue Queue,
 	batchSize int,
 	flushInterval, heartbeatInterval time.Duration,
+	metricsCollector *hostmetrics.Collector,
 ) *Sender {
 	return &Sender{
 		masterURL:         masterURL,
@@ -56,6 +60,7 @@ func New(
 		batchSize:         batchSize,
 		flushInterval:     flushInterval,
 		heartbeatInterval: heartbeatInterval,
+		metricsCollector:  metricsCollector,
 	}
 }
 
@@ -163,6 +168,7 @@ func (s *Sender) sendHeartbeat(ctx context.Context) {
 	payloadBytes, err := json.Marshal(heartbeatPayload{
 		Health:     "healthy",
 		QueueDepth: queueDepth,
+		System:     collectMetrics(s.metricsCollector),
 	})
 	if err != nil {
 		log.Printf("failed to marshal heartbeat payload: %v", err)
@@ -194,6 +200,20 @@ func (s *Sender) sendHeartbeat(ctx context.Context) {
 		body, _ := io.ReadAll(resp.Body)
 		log.Printf("heartbeat failed with status %d: %s", resp.StatusCode, string(body))
 	}
+}
+
+func collectMetrics(collector *hostmetrics.Collector) *hostmetrics.Snapshot {
+	if collector == nil {
+		return nil
+	}
+
+	snapshot, err := collector.Collect()
+	if err != nil {
+		log.Printf("failed to collect host metrics: %v", err)
+		return nil
+	}
+
+	return snapshot
 }
 
 func gzipPayload(payload []byte) ([]byte, error) {

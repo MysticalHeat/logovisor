@@ -247,12 +247,39 @@ LOGOVISOR_AGENT_LOG_FILENAME=app.log
 - `/var/log/journal`
 - `/run/log/journal`
 - `/etc/machine-id`
+- `/etc/hostname`
 
 Если journald на хосте не используется, лучше отключить его явно:
 
 ```dotenv
 LOGOVISOR_ENABLE_JOURNALD=false
 ```
+
+### Метрики хоста в контейнерном агенте
+
+Агент умеет снимать базовые host-level метрики, даже когда он запущен в Docker.
+
+Для этого compose монтирует внутрь контейнера:
+
+- `/proc` → `/host/proc`
+- `/sys` → `/host/sys`
+- `/` → `/hostfs`
+
+Сейчас агент отправляет в heartbeat:
+
+- `cpuPercent`
+- `load1`, `load5`, `load15`
+- `memoryTotalBytes`, `memoryAvailableBytes`, `memoryUsedBytes`
+- `swapTotalBytes`, `swapUsedBytes`
+- `diskTotalBytes`, `diskUsedBytes`, `diskFreeBytes`
+- `networkRxBytes`, `networkTxBytes`
+- `uptimeSeconds`
+
+Для поля `hostname` агент сначала пытается прочитать имя хоста из смонтированного файла:
+
+- `/etc/hostname` → `/host/etc/hostname`
+
+Если файл недоступен, агент использует `os.Hostname()` внутри контейнера.
 
 ### Проверка установки агента
 

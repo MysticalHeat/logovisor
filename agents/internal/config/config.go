@@ -12,7 +12,12 @@ type Config struct {
 	MasterURL         string
 	BootstrapToken    string
 	HostID            string
+	HostnamePath      string
 	LogFilePath       string
+	HostProcPath      string
+	HostSysPath       string
+	HostRootFSPath    string
+	HostDiskPath      string
 	DBPath            string
 	BatchSize         int
 	FlushInterval     time.Duration
@@ -69,7 +74,12 @@ func Load() (*Config, error) {
 		MasterURL:         strings.TrimRight(getEnv("LOGOVISOR_MASTER_URL", "http://localhost:3000"), "/"),
 		BootstrapToken:    getEnv("LOGOVISOR_BOOTSTRAP_TOKEN", ""),
 		HostID:            hostID,
+		HostnamePath:      getEnv("LOGOVISOR_HOSTNAME_PATH", "/host/etc/hostname"),
 		LogFilePath:       getEnv("LOGOVISOR_LOG_FILE_PATH", "/var/log/syslog"),
+		HostProcPath:      getEnv("LOGOVISOR_HOST_PROC_PATH", "/host/proc"),
+		HostSysPath:       getEnv("LOGOVISOR_HOST_SYS_PATH", "/host/sys"),
+		HostRootFSPath:    getEnv("LOGOVISOR_HOST_ROOTFS_PATH", "/hostfs"),
+		HostDiskPath:      getEnv("LOGOVISOR_HOST_DISK_PATH", "/hostfs"),
 		DBPath:            getEnv("LOGOVISOR_DB_PATH", "agent.db"),
 		BatchSize:         batchSize,
 		FlushInterval:     flushInterval,

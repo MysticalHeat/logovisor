@@ -10,8 +10,13 @@
       section { background: #121936; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
       table { width: 100%; border-collapse: collapse; }
       th, td { border-bottom: 1px solid #29314f; padding: 8px; text-align: left; }
+      th { color: #93c5fd; }
       code, pre { background: #0f172a; padding: 8px; display: block; overflow: auto; }
       .hidden { display: none; }
+      .muted { color: #94a3b8; }
+      .status-online { color: #34d399; font-weight: 700; }
+      .status-offline { color: #f87171; font-weight: 700; }
+      .metrics { font-family: monospace; white-space: pre-wrap; }
     </style>
   </head>
   <body>
@@ -29,7 +34,7 @@
       <button id="logout-button">Logout</button>
       <h2>Agents</h2>
       <button id="refresh-agents">Refresh agents</button>
-      <pre id="agents-output"></pre>
+      <div id="agents-output"></div>
 
       <h2>Logs</h2>
       <input id="logs-query" placeholder="search text" />
@@ -47,6 +52,63 @@
       const loginSection = document.getElementById('login-section');
       const appSection = document.getElementById('app-section');
       const loginError = document.getElementById('login-error');
+
+      function bytesToGiB(value) {
+        if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+        return `${(value / (1024 ** 3)).toFixed(1)} GiB`;
+      }
+
+      function numberOrNA(value, digits = 2) {
+        if (typeof value !== 'number' || Number.isNaN(value)) return 'n/a';
+        return value.toFixed(digits);
+      }
+
+      function renderMetrics(system) {
+        if (!system) return '<span class="muted">no metrics yet</span>';
+        return [
+          `CPU ${numberOrNA(system.cpuPercent, 1)}%`,
+          `Load ${numberOrNA(system.load1)}/${numberOrNA(system.load5)}/${numberOrNA(system.load15)}`,
+          `Mem ${bytesToGiB(system.memoryUsedBytes)} / ${bytesToGiB(system.memoryTotalBytes)}`,
+          `Disk ${bytesToGiB(system.diskUsedBytes)} / ${bytesToGiB(system.diskTotalBytes)}`,
+          `Net RX ${bytesToGiB(system.networkRxBytes)} TX ${bytesToGiB(system.networkTxBytes)}`,
+          `Uptime ${numberOrNA(system.uptimeSeconds, 0)}s`,
+        ].join('\n');
+      }
+
+      function renderAgents(data) {
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length === 0) {
+          document.getElementById('agents-output').innerHTML = '<p class="muted">No agents found.</p>';
+          return;
+        }
+
+        document.getElementById('agents-output').innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Host ID</th>
+                <th>Status</th>
+                <th>Hostname</th>
+                <th>OS</th>
+                <th>Last seen</th>
+                <th>Host metrics</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((item) => `
+                <tr>
+                  <td><code>${item.hostId}</code></td>
+                  <td class="${item.status === 'online' ? 'status-online' : 'status-offline'}">${item.status}</td>
+                  <td>${item.hostname}</td>
+                  <td>${item.os}</td>
+                  <td>${item.lastSeenAt}</td>
+                  <td class="metrics">${renderMetrics(item.latestHeartbeat?.system)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
 
       async function api(path, options = {}) {
         const response = await fetch(`/api${path}`, {
@@ -77,7 +139,10 @@
 
       async function refreshAgents() {
         const data = await api('/admin/agents');
-        document.getElementById('agents-output').textContent = JSON.stringify(data, null, 2);
+        const details = await Promise.all(
+          (data.items || []).map((item) => api(`/admin/agents/${item.id}`)),
+        );
+        renderAgents({ items: details });
       }
 
       document.getElementById('login-button').onclick = async () => {
