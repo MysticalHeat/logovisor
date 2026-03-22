@@ -216,6 +216,9 @@ class LogsAnalyticsResponseDto {
 
   @ApiProperty({ type: [AnalyticsTopHostDto] })
   topHosts: AnalyticsTopHostDto[];
+
+  @ApiProperty({ type: [AnalyticsTopHostDto] })
+  topErrorHosts: AnalyticsTopHostDto[];
 }
 
 class SystemSummaryDto {

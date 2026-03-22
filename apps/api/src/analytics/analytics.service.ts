@@ -86,6 +86,10 @@ export interface LogsAnalyticsResult {
     hostId: string;
     count: number;
   }>;
+  topErrorHosts: Array<{
+    hostId: string;
+    count: number;
+  }>;
 }
 
 export interface SystemAnalyticsResult {
@@ -212,6 +216,7 @@ export class AnalyticsService {
       levelRows,
       sourceRows,
       topHostRows,
+      topErrorHostRows,
       totalRows,
       previousTotalRows,
       heatmapRows,
@@ -248,6 +253,17 @@ export class AnalyticsService {
           count() AS count
         FROM logs_raw
         WHERE ${buildClickhouseWhereBetween(filters, filters.startAt, filters.endAt)}
+        GROUP BY host_id
+        ORDER BY count DESC, host_id ASC
+        LIMIT 10
+        FORMAT JSONEachRow
+      `),
+        this.clickhouseService.queryJsonEachRow(`
+        SELECT
+          host_id,
+          count() AS count
+        FROM logs_raw
+        WHERE ${buildClickhouseWhereBetween(filters, filters.startAt, filters.endAt, ["level = 'error'"])}
         GROUP BY host_id
         ORDER BY count DESC, host_id ASC
         LIMIT 10
@@ -331,6 +347,10 @@ export class AnalyticsService {
         count: toNumber(row.count),
       })),
       topHosts: topHostRows.map((row) => ({
+        hostId: toStringValue(row.host_id) || 'unknown',
+        count: toNumber(row.count),
+      })),
+      topErrorHosts: topErrorHostRows.map((row) => ({
         hostId: toStringValue(row.host_id) || 'unknown',
         count: toNumber(row.count),
       })),
