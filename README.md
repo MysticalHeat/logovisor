@@ -40,6 +40,7 @@
 ## Документация
 
 - [Alert rules DSL](./ALERTS_DSL.md)
+- Production frontend repository: https://sourcecraft.dev/dfixies-vum-geryon/frontend
 
 ## Архитектура
 
@@ -85,6 +86,10 @@ Production frontend живёт отдельно от debug admin UI:
 
 - `/` — production frontend из `frontend/`
 - `/admin/` — debug/admin UI из `apps/admin`
+
+Канонический репозиторий production frontend:
+
+- https://sourcecraft.dev/dfixies-vum-geryon/frontend
 
 ### Storage
 

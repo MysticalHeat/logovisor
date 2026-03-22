@@ -71,17 +71,17 @@ export class ClickhouseService {
     }
     if (params.from) {
       whereClauses.push(
-        `timestamp >= parseDateTime64BestEffort(${quoteSqlString(params.from.toISOString())})`,
+        `parseDateTime64BestEffort(timestamp) >= parseDateTime64BestEffort(${quoteSqlString(params.from.toISOString())})`,
       );
     }
     if (params.to) {
       whereClauses.push(
-        `timestamp <= parseDateTime64BestEffort(${quoteSqlString(params.to.toISOString())})`,
+        `parseDateTime64BestEffort(timestamp) <= parseDateTime64BestEffort(${quoteSqlString(params.to.toISOString())})`,
       );
     }
     if (params.beforeTimestamp) {
       whereClauses.push(
-        `tuple(timestamp, event_id) < tuple(${quoteSqlString(params.beforeTimestamp)}, ${quoteSqlString(params.beforeEventId ?? '')})`,
+        `tuple(parseDateTime64BestEffort(timestamp), event_id) < tuple(parseDateTime64BestEffort(${quoteSqlString(params.beforeTimestamp)}), ${quoteSqlString(params.beforeEventId ?? '')})`,
       );
     }
 
@@ -98,7 +98,7 @@ export class ClickhouseService {
       '  source_json',
       'FROM logs_raw',
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '',
-      'ORDER BY timestamp DESC',
+      'ORDER BY parseDateTime64BestEffort(timestamp) DESC, event_id DESC',
       `LIMIT ${params.limit}`,
       'FORMAT JSONEachRow',
     ]
