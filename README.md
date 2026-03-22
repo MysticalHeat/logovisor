@@ -30,6 +30,7 @@
 
 - `apps/api` — NestJS API
 - `apps/admin` — Vite admin frontend, раздаётся через API на `/admin/`
+- `frontend` — production frontend (Vite + React), разворачивается отдельным контейнером на `/`
 - `agents` — Go-агент
 - `deploy/docker-compose.yml` — основной compose для всего стека
 - `deploy/docker-compose.agent.yml` — compose только для отдельного агента
@@ -80,6 +81,11 @@
 - **Alerts** — integrations, rules, DSL validate/preview, incidents, silences, notification history
 - **Tokens** — enrollment tokens
 
+Production frontend живёт отдельно от debug admin UI:
+
+- `/` — production frontend из `frontend/`
+- `/admin/` — debug/admin UI из `apps/admin`
+
 ### Storage
 
 - **PostgreSQL** — агенты, токены, heartbeat history, alerts state
@@ -93,6 +99,7 @@
 - `postgres`
 - `clickhouse`
 - `api`
+- `frontend`
 - `log-generator`
 - `agent`
 
@@ -102,6 +109,7 @@
 - PostgreSQL опубликован на `127.0.0.1:5432`
 - ClickHouse опубликован на `127.0.0.1:8123`
 - admin UI раздаётся API на `/admin/`
+- production frontend раздаётся отдельным nginx-контейнером на `/`
 - основной внешний домен по умолчанию: `https://hack.nomli-com.ru`
 
 ## Быстрый старт через Docker Compose
@@ -141,6 +149,12 @@ API:
 
 ```text
 https://hack.nomli-com.ru/api
+```
+
+Production frontend:
+
+```text
+https://hack.nomli-com.ru/
 ```
 
 Swagger:
