@@ -3,6 +3,7 @@ package queue
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
@@ -125,6 +126,52 @@ func (q *SQLiteQueue) Delete(ids []int64) error {
 	}
 
 	return tx.Commit()
+}
+
+func (q *SQLiteQueue) EnforceRetention(maxEvents int, maxAge time.Duration) (int64, error) {
+	var deleted int64
+
+	if maxAge > 0 {
+		result, err := q.db.Exec(
+			`DELETE FROM queued_events WHERE created_at < datetime('now', ?)`,
+			fmt.Sprintf("-%d seconds", int(maxAge.Seconds())),
+		)
+		if err != nil {
+			return deleted, err
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return deleted, err
+		}
+		deleted += rowsAffected
+	}
+
+	if maxEvents > 0 {
+		count, err := q.Count()
+		if err != nil {
+			return deleted, err
+		}
+
+		excess := count - int64(maxEvents)
+		if excess > 0 {
+			result, err := q.db.Exec(
+				`DELETE FROM queued_events WHERE id IN (SELECT id FROM queued_events ORDER BY id ASC LIMIT ?)`,
+				excess,
+			)
+			if err != nil {
+				return deleted, err
+			}
+
+			rowsAffected, err := result.RowsAffected()
+			if err != nil {
+				return deleted, err
+			}
+			deleted += rowsAffected
+		}
+	}
+
+	return deleted, nil
 }
 
 func (q *SQLiteQueue) EnqueueFileEvent(path string, nextOffset int64, payload []byte) error {

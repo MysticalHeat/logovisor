@@ -20,6 +20,7 @@ type Queue interface {
 	Count() (int64, error)
 	Dequeue(batchSize int) ([]queue.Event, error)
 	Delete(ids []int64) error
+	EnforceRetention(maxEvents int, maxAge time.Duration) (int64, error)
 }
 
 type Sender struct {
@@ -31,6 +32,8 @@ type Sender struct {
 	batchSize         int
 	flushInterval     time.Duration
 	heartbeatInterval time.Duration
+	maxQueueEvents    int
+	maxQueueAge       time.Duration
 	metricsCollector  *hostmetrics.Collector
 }
 
@@ -53,6 +56,8 @@ func New(
 	queue Queue,
 	batchSize int,
 	flushInterval, heartbeatInterval time.Duration,
+	maxQueueEvents int,
+	maxQueueAge time.Duration,
 	metricsCollector *hostmetrics.Collector,
 ) *Sender {
 	return &Sender{
@@ -64,6 +69,8 @@ func New(
 		batchSize:         batchSize,
 		flushInterval:     flushInterval,
 		heartbeatInterval: heartbeatInterval,
+		maxQueueEvents:    maxQueueEvents,
+		maxQueueAge:       maxQueueAge,
 		metricsCollector:  metricsCollector,
 	}
 }
@@ -163,6 +170,13 @@ func (s *Sender) sendBatch(ctx context.Context) {
 }
 
 func (s *Sender) sendHeartbeat(ctx context.Context) {
+	deleted, err := s.queue.EnforceRetention(s.maxQueueEvents, s.maxQueueAge)
+	if err != nil {
+		log.Printf("failed to enforce queue retention: %v", err)
+	} else if deleted > 0 {
+		log.Printf("queue retention deleted %d buffered events", deleted)
+	}
+
 	queueDepth, err := s.queue.Count()
 	if err != nil {
 		log.Printf("failed to count queue depth: %v", err)

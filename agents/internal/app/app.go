@@ -86,6 +86,8 @@ func (a *App) Run() error {
 		cfg.BatchSize,
 		cfg.FlushInterval,
 		cfg.HeartbeatInterval,
+		cfg.MaxQueueEvents,
+		cfg.MaxQueueAge,
 		hostmetrics.New(hostmetrics.Config{
 			Enable:   true,
 			ProcPath: cfg.HostProcPath,

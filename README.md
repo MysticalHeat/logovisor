@@ -333,6 +333,8 @@ docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml logs -f 
 - `LOGOVISOR_JOURNALD_UNITS`
 - `LOGOVISOR_FLUSH_INTERVAL_SECONDS`
 - `LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS`
+- `LOGOVISOR_MAX_QUEUE_EVENTS`
+- `LOGOVISOR_MAX_QUEUE_AGE_HOURS`
 
 ### Retention / housekeeping
 

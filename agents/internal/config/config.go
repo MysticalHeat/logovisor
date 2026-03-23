@@ -22,6 +22,8 @@ type Config struct {
 	BatchSize         int
 	FlushInterval     time.Duration
 	HeartbeatInterval time.Duration
+	MaxQueueEvents    int
+	MaxQueueAge       time.Duration
 	EnableFileInput   bool
 	EnableJournald    bool
 	JournaldUnits     []string
@@ -48,6 +50,16 @@ func Load() (*Config, error) {
 	}
 
 	heartbeatInterval, err := getEnvDurationSeconds("LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS", 30)
+	if err != nil {
+		return nil, err
+	}
+
+	maxQueueEvents, err := getEnvInt("LOGOVISOR_MAX_QUEUE_EVENTS", 50000)
+	if err != nil {
+		return nil, err
+	}
+
+	maxQueueAgeHours, err := getEnvInt("LOGOVISOR_MAX_QUEUE_AGE_HOURS", 24)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +96,8 @@ func Load() (*Config, error) {
 		BatchSize:         batchSize,
 		FlushInterval:     flushInterval,
 		HeartbeatInterval: heartbeatInterval,
+		MaxQueueEvents:    maxQueueEvents,
+		MaxQueueAge:       time.Duration(maxQueueAgeHours) * time.Hour,
 		EnableFileInput:   enableFileInput,
 		EnableJournald:    enableJournald,
 		JournaldUnits:     filteredUnits,
