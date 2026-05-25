@@ -38,7 +38,7 @@ flowchart LR
   API --> PG[(PostgreSQL)]
   API --> CH[(ClickHouse)]
   API -->|admin APIs + SSE| UI[Admin UI]
-  API --> MON[/health /ready /metrics /api/docs]
+  API --> MON[health, ready, metrics, api docs]
   API --> RT[Alert runtime]
   RT --> PG
   RT --> CH
