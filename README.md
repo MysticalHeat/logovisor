@@ -1,380 +1,200 @@
 # logovisor
 
-Монорепозиторий системы для сбора, поиска, стриминга и анализа логов, мониторинга состояния агентов и доставки алертов.
+logovisor is a backend observability system for log collection, search, live streaming, analytics, agent monitoring, and alerting. A Go host agent tails files and/or `journald`, buffers events locally, and ships batches to a NestJS control plane; PostgreSQL stores fleet and alert state, while ClickHouse stores searchable log history. The repository showcases the data path and control path together: ingestion, token-based enrollment, heartbeats, admin APIs, analytics, and alert execution are all implemented here.
 
-## Что умеет сейчас
+## Key Features
 
-- сбор логов из file input и journald через Go-агент
-- bootstrap enrollment агентов через одноразовые enrollment tokens
-- runtime agent tokens с отзывом через админку/API
-- heartbeat и host metrics от агентов
-- хранение логов в ClickHouse
-- хранение control-plane данных и alerting state в PostgreSQL
-- Admin UI на `/admin/` с cookie-auth
-- поиск логов по фильтрам
-- live logs streaming через SSE
-- аналитика по логам и системным метрикам:
-    - overview
-    - log volume over time
-    - error frequency heatmap
-    - top error messages
-    - log volume comparison
-    - CPU / memory trends
-- алерты с кастомным DSL
-- Telegram notifications
-- incidents / ack / resolve / silences / notification history
-- Swagger/OpenAPI на `/api/docs`
-- `/health`, `/ready`, `/metrics`
+- **Ingestion**: file tailing, `journald` ingestion, gzip-compressed batch shipping, local SQLite buffering, resumable checkpoints
+- **Fleet**: bootstrap enrollment tokens, runtime agent tokens, heartbeats, queue depth reporting, host metrics snapshots
+- **Logs**: ClickHouse-backed search, cursor pagination, SSE live streaming, filters by host, agent, source, level, and query text
+- **Analytics**: fleet overview, log volume over time, error heatmaps, top error messages, source/level breakdowns, system metric trends
+- **Alerting**: custom DSL for log and heartbeat rules, Telegram integrations, incident tracking, acknowledge/resolve flows, silences, notification history
+- **Operations**: Swagger/OpenAPI, `/health`, `/ready`, `/metrics`, retention housekeeping, Docker Compose deployment files, smoke test script
 
-## Структура
+## Architecture
 
-- `apps/api` — NestJS API
-- `apps/admin` — Vite admin frontend, раздаётся через API на `/admin/`
-- `frontend` — production frontend (Vite + React), разворачивается отдельным контейнером на `/`
-- `agents` — Go-агент
-- `deploy/docker-compose.yml` — основной compose для всего стека
-- `deploy/docker-compose.agent.yml` — compose только для отдельного агента
-- `deploy/systemd` — systemd units
-- `deploy/packaging/deb` — заготовка под `.deb`
+- `apps/api` is the control plane: operator auth, agent enrollment, heartbeat intake, log ingestion, admin APIs, analytics APIs, and alert runtime.
+- `agents` is the host-side data plane: file reader, `journald` reader, SQLite queue, sender, and host metrics collector.
+- `apps/admin` is a Vite-built admin SPA served by the API at `/admin/`.
+- PostgreSQL stores agents, tokens, heartbeats, alert rules, incidents, silences, and notification state.
+- ClickHouse stores raw log events for search and aggregates.
+- `deploy/docker-compose.yml` also expects a separate frontend for `/`, but the checked-in `frontend/` directory is currently empty.
 
-## Документация
+```mermaid
+flowchart LR
+  subgraph Host
+    F[Log files]
+    J[journald]
+    A[logovisor-agent]
+    Q[(SQLite queue)]
+    M[Host metrics]
+    F --> A
+    J --> A
+    M --> A
+    A --> Q
+  end
 
-- [Alert rules DSL](./ALERTS_DSL.md)
-- Production frontend repository: https://sourcecraft.dev/dfixies-vum-geryon/frontend
+  A -->|enroll / heartbeat / ingest| API[NestJS API]
+  API --> PG[(PostgreSQL)]
+  API --> CH[(ClickHouse)]
+  API -->|admin APIs + SSE| UI[Admin UI]
+  API --> MON[/health /ready /metrics /api/docs]
+  API --> RT[Alert runtime]
+  RT --> PG
+  RT --> CH
+  RT --> TG[Telegram]
+```
 
-## Архитектура
+## Tech Stack
 
-### API
+| Area | Technologies |
+| --- | --- |
+| API | NestJS, TypeScript, Swagger, class-validator |
+| Data | PostgreSQL, Drizzle ORM, `pg`, ClickHouse |
+| Agent | Go, SQLite (`modernc.org/sqlite`) |
+| Admin UI | Vite, vanilla JavaScript, CSS |
+| Delivery / ops | Docker Compose, Traefik, systemd unit stub |
+| Tooling | Jest, ESLint, Prettier, Go test, shell smoke test |
 
-`apps/api` отвечает за:
+## Repository Structure
 
-- auth оператора
-- enrollment агентов
-- приём heartbeat
-- ingest логов
-- admin endpoints
-- analytics endpoints
-- alerting runtime
+- `apps/api` - NestJS backend and admin-serving runtime
+- `apps/admin` - admin interface for fleet, logs, analytics, alerts, and token management
+- `agents` - Go agent with buffering, enrollment, shipping, and host metrics
+- `deploy` - Compose files, ClickHouse init SQL, smoke test, packaging and systemd assets
+- `log-generator` - synthetic log producer for demos and local testing
+- `frontend` - placeholder for a separate user-facing frontend expected by the full compose stack
+- `ALERTS_DSL.md` - alert rule language reference
 
-Основные публичные маршруты:
+## Quick Start
 
-- `/api/auth/*`
-- `/api/agents/*`
-- `/api/ingest/logs`
-- `/api/admin/*`
-- `/api/admin/analytics/*`
-- `/api/admin/alerts/*`
-- `/health`
-- `/ready`
-- `/metrics`
+The most reliable path from this checkout is a Docker-backed local dev setup: start storage and sample logs with Compose, then run the API and agent locally.
 
-### Admin UI
+### Prerequisites
 
-`apps/admin` — SPA без backend templating. Доступен с того же origin:
+- Docker with Compose support
+- Node.js and npm
+- Go
+- Linux if you want real `journald` ingestion
 
-- `https://<domain>/admin/`
-
-Разделы админки:
-
-- **Fleet** — список агентов, drawer с деталями, heartbeat history, CPU/memory history, runtime tokens
-- **Logs** — поиск логов, live streaming, pause/resume, clear, фильтры по host/agent/source/level/query
-- **Analytics** — логовая и системная аналитика, host/agent selectors
-- **Alerts** — integrations, rules, DSL validate/preview, incidents, silences, notification history
-- **Tokens** — enrollment tokens
-
-Production frontend живёт отдельно от debug admin UI:
-
-- `/` — production frontend из `frontend/`
-- `/admin/` — debug/admin UI из `apps/admin`
-
-Канонический репозиторий production frontend:
-
-- https://sourcecraft.dev/dfixies-vum-geryon/frontend
-
-### Storage
-
-- **PostgreSQL** — агенты, токены, heartbeat history, alerts state
-- **ClickHouse** — log events
-
-## Что поднимает основной compose
-
-`deploy/docker-compose.yml` поднимает:
-
-- `traefik`
-- `postgres`
-- `clickhouse`
-- `api`
-- `frontend`
-- `log-generator`
-- `agent`
-
-Особенности текущего рантайма:
-
-- `api` работает в `network_mode: host`
-- PostgreSQL опубликован на `127.0.0.1:5432`
-- ClickHouse опубликован на `127.0.0.1:8123`
-- admin UI раздаётся API на `/admin/`
-- production frontend раздаётся отдельным nginx-контейнером на `/`
-- основной внешний домен по умолчанию: `https://hack.nomli-com.ru`
-
-## Быстрый старт через Docker Compose
-
-### Требования
-
-- Docker
-- Docker Compose plugin
-- Linux-хост, если нужен `journald`
-
-### 1. Подготовить конфиг
+### 1. Install and configure
 
 ```bash
 cp .env.example .env
-mkdir -p deploy/traefik
-touch deploy/traefik/acme.json
-chmod 600 deploy/traefik/acme.json
+npm install
 ```
 
-### 2. Поднять стек
+### 2. Start dependencies
 
 ```bash
-docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+docker compose --env-file .env -f deploy/docker-compose.yml up -d postgres clickhouse log-generator
 ```
 
-### 3. Проверить состояние
+This avoids the checked-in `frontend/` gap while still starting the real storage layer and sample log source.
 
-```bash
-docker compose --env-file .env -f deploy/docker-compose.yml ps
-docker compose --env-file .env -f deploy/docker-compose.yml logs -f api
-docker compose --env-file .env -f deploy/docker-compose.yml logs -f agent
-```
-
-### 4. Открыть сервисы
-
-API:
-
-```text
-https://hack.nomli-com.ru/api
-```
-
-Production frontend:
-
-```text
-https://hack.nomli-com.ru/
-```
-
-Swagger:
-
-```text
-https://hack.nomli-com.ru/api/docs
-```
-
-Admin:
-
-```text
-https://hack.nomli-com.ru/admin/
-```
-
-## Основные сценарии
-
-### Создать enrollment token
-
-Через админку:
-
-- `/admin/` → `Tokens`
-
-Или через API после логина:
-
-- `POST /api/admin/enrollment-tokens`
-
-### Подключить агента
-
-Агент:
-
-1. использует bootstrap token
-2. делает enroll в API
-3. получает runtime token
-4. начинает слать heartbeat и лог-батчи
-
-### Проверить, что логи пишутся
-
-```bash
-docker compose --env-file .env -f deploy/docker-compose.yml exec clickhouse sh -lc \
-  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --query "SELECT host_id, source_type, level, count() FROM logs_raw GROUP BY host_id, source_type, level ORDER BY count() DESC LIMIT 20"'
-```
-
-### Проверить live logs streaming
-
-В админке:
-
-- открыть `Logs`
-- выставить фильтры при необходимости
-- нажать `Go live`
-
-Backend stream endpoint:
-
-- `GET /api/admin/logs/stream`
-
-Поддерживаются те же фильтры, что и у search logs:
-
-- `query`
-- `hostId`
-- `agentId`
-- `sourceType`
-- `level`
-- `from`
-- `to`
-
-### Настроить алерты
-
-В админке доступно:
-
-- Telegram integrations
-- alert rules DSL
-- DSL validation
-- preview на недавних данных
-- incidents
-- silences
-- notification history
-
-Подробности по DSL:
-
-- [ALERTS_DSL.md](./ALERTS_DSL.md)
-
-## Отдельный запуск только агента
-
-Если master API уже развёрнут отдельно:
-
-### 1. Подготовить env
-
-```bash
-cp .env.example .env.agent
-```
-
-Минимально переопределить:
-
-```dotenv
-LOGOVISOR_MASTER_URL=https://hack.nomli-com.ru/api
-LOGOVISOR_BOOTSTRAP_TOKEN=your-bootstrap-token
-LOGOVISOR_AGENT_HOST_ID=my-host
-LOGOVISOR_HOST_LOG_DIR=/var/log
-LOGOVISOR_AGENT_LOG_FILENAME=syslog
-```
-
-Если `journald` не нужен:
-
-```dotenv
-LOGOVISOR_ENABLE_JOURNALD=false
-```
-
-### 2. Запустить
-
-```bash
-docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml up -d --build
-```
-
-### 3. Проверить
-
-```bash
-docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml ps
-docker compose --env-file .env.agent -f deploy/docker-compose.agent.yml logs -f agent
-```
-
-## Метрики хоста, которые агент отправляет в heartbeat
-
-- `cpuPercent`
-- `load1`, `load5`, `load15`
-- `memoryTotalBytes`, `memoryAvailableBytes`, `memoryUsedBytes`
-- `swapTotalBytes`, `swapUsedBytes`
-- `diskTotalBytes`, `diskUsedBytes`, `diskFreeBytes`
-- `networkRxBytes`, `networkTxBytes`
-- `uptimeSeconds`
-
-Эти данные используются в:
-
-- Fleet drawer
-- Analytics system endpoints
-- alert rules для heartbeat/system conditions
-
-## Важные переменные окружения
-
-### API / auth
-
-- `API_BIND_ADDRESS`
-- `API_PORT`
-- `LOGOVISOR_OPERATOR_USERNAME`
-- `LOGOVISOR_OPERATOR_PASSWORD`
-- `LOGOVISOR_OPERATOR_JWT_SECRET`
-- `LOGOVISOR_OPERATOR_JWT_EXPIRES_IN_SECONDS`
-- `LOGOVISOR_OPERATOR_COOKIE_SECURE`
-
-### Routing / TLS
-
-- `TRAEFIK_DOMAIN`
-- `TRAEFIK_ACME_EMAIL`
-
-### Database
-
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `CLICKHOUSE_USER`
-- `CLICKHOUSE_PASSWORD`
-- `CLICKHOUSE_DATABASE`
-
-### Agent / ingestion
-
-- `LOGOVISOR_ENROLLMENT_TOKEN`
-- `LOGOVISOR_ENROLLMENT_TOKEN_TTL_MINUTES`
-- `LOGOVISOR_AGENT_HOST_ID`
-- `LOGOVISOR_HOST_LOG_DIR`
-- `LOGOVISOR_AGENT_LOG_FILENAME`
-- `LOGOVISOR_ENABLE_FILE_INPUT`
-- `LOGOVISOR_ENABLE_JOURNALD`
-- `LOGOVISOR_JOURNALD_UNITS`
-- `LOGOVISOR_FLUSH_INTERVAL_SECONDS`
-- `LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS`
-- `LOGOVISOR_MAX_QUEUE_EVENTS`
-- `LOGOVISOR_MAX_QUEUE_AGE_HOURS`
-
-### Retention / housekeeping
-
-- `LOGOVISOR_LOG_RETENTION_DAYS`
-- `LOGOVISOR_HEARTBEAT_RETENTION_DAYS`
-- `LOGOVISOR_TOKEN_RETENTION_DAYS`
-- `LOGOVISOR_HOUSEKEEPING_INTERVAL_SECONDS`
-
-### Alerts
-
-- `LOGOVISOR_ALERTS_ENCRYPTION_SECRET`
-- `LOGOVISOR_ALERT_EVALUATION_INTERVAL_SECONDS`
-- `LOGOVISOR_ALERT_DISPATCH_INTERVAL_SECONDS`
-
-## Полезные команды
+### 3. Build the admin UI and run the API
 
 ```bash
 npm run admin:build
-npm run api:build
-npm run api:start
+set -a && source .env && set +a
 npm run api:start:dev
-npm run api:test
-npm run api:lint
-npm run agent:build
+```
+
+### 4. Run an agent locally
+
+```bash
+set -a && source .env && set +a
+export LOGOVISOR_MASTER_URL=http://127.0.0.1:3000/api
+export LOGOVISOR_BOOTSTRAP_TOKEN="$LOGOVISOR_ENROLLMENT_TOKEN"
+export LOGOVISOR_HOST_ID=local-dev-host
+export LOGOVISOR_LOG_FILE_PATH=/tmp/logovisor-agent.log
 npm run agent:run
-npm run agent:test
-npm run fmt
+```
+
+Generate a test file log:
+
+```bash
+printf 'local test error %s\n' "$(date -Iseconds)" >> /tmp/logovisor-agent.log
+```
+
+### 5. Open the system
+
+- Admin UI: `http://127.0.0.1:3000/admin/`
+- API docs: `http://127.0.0.1:3000/api/docs`
+- Health: `http://127.0.0.1:3000/health`
+
+Default operator credentials come from `.env`:
+
+- username: `admin`
+- password: `change-me`
+
+## Main Workflows / Usage
+
+- **Start the stack**: bring up PostgreSQL, ClickHouse, and the log generator; then run the API and one or more agents.
+- **Enroll an agent**: the agent calls `POST /api/agents/enroll` with a bootstrap token and receives a runtime bearer token, which it persists in local SQLite state.
+- **Ship and search logs**: the agent batches file or `journald` events to `POST /api/ingest/logs`; operators search through `GET /api/admin/logs/search`.
+- **Watch live traffic**: the admin UI consumes `GET /api/admin/logs/stream` over SSE for live log streaming.
+- **Monitor hosts**: heartbeats sent to `POST /api/agents/heartbeat` include queue depth and host metrics used by the fleet and analytics views.
+- **Configure alerts**: create Telegram integrations, validate DSL rules, preview matches, and manage incidents, silences, and notification history under `/api/admin/alerts/*`.
+
+## Configuration
+
+Start with the root `.env.example`. The most important settings are:
+
+- **Operator auth**: `LOGOVISOR_OPERATOR_USERNAME`, `LOGOVISOR_OPERATOR_PASSWORD`, `LOGOVISOR_OPERATOR_JWT_SECRET`, `LOGOVISOR_OPERATOR_COOKIE_SECURE`
+- **Storage**: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_DATABASE`
+- **Agent behavior**: `LOGOVISOR_ENROLLMENT_TOKEN`, `LOGOVISOR_AGENT_HOST_ID`, `LOGOVISOR_HOST_LOG_DIR`, `LOGOVISOR_AGENT_LOG_FILENAME`, `LOGOVISOR_ENABLE_FILE_INPUT`, `LOGOVISOR_ENABLE_JOURNALD`, `LOGOVISOR_JOURNALD_UNITS`
+- **Flow control**: `LOGOVISOR_FLUSH_INTERVAL_SECONDS`, `LOGOVISOR_HEARTBEAT_INTERVAL_SECONDS`, `LOGOVISOR_MAX_QUEUE_EVENTS`, `LOGOVISOR_MAX_QUEUE_AGE_HOURS`
+- **Retention**: `LOGOVISOR_LOG_RETENTION_DAYS`, `LOGOVISOR_HEARTBEAT_RETENTION_DAYS`, `LOGOVISOR_TOKEN_RETENTION_DAYS`, `LOGOVISOR_HOUSEKEEPING_INTERVAL_SECONDS`
+- **Alerting**: `LOGOVISOR_ALERTS_ENCRYPTION_SECRET`, `LOGOVISOR_ALERT_EVALUATION_INTERVAL_SECONDS`, `LOGOVISOR_ALERT_DISPATCH_INTERVAL_SECONDS`
+
+Additional examples:
+
+- `apps/api/.env.example`
+- `apps/api/.env.local.example`
+- `agents/.env.example`
+
+## Developer Commands
+
+```bash
 npm run build
 npm run test
+npm run lint
+npm run fmt
+
+npm run api:start:dev
+npm run api:build
+npm run api:test
+
+npm run agent:run
+npm run agent:build
+npm run agent:test
+
+npm run generator:run
 npm run smoke-test
 ```
 
-## Smoke test
+Equivalent `make` targets exist for common API, agent, generator, and smoke-test flows.
 
-```bash
-npm run smoke-test
-```
+## Operational Endpoints
 
-Оставить окружение после smoke test:
+- `GET /health` - liveness probe
+- `GET /ready` - readiness probe for PostgreSQL and ClickHouse
+- `GET /metrics` - Prometheus-style counters for enroll, heartbeat, ingest, and housekeeping
+- `GET /api/docs` - Swagger UI
+- `GET /api/docs-json` - OpenAPI JSON
+- `GET /api/docs-yaml` - OpenAPI YAML
+- `GET /admin/` - admin UI
 
-```bash
-KEEP_SMOKE_ENV=1 npm run smoke-test
-```
+## Documentation
+
+- [Alert Rules DSL](./ALERTS_DSL.md)
+- [Agent packaging notes](./deploy/packaging/deb/README.md)
+- [Smoke test script](./deploy/smoke-test.sh)
+
+## Current Limitations
+
+- The separate production frontend expected by the full Compose stack is not checked in; `frontend/` is currently empty.
+- Packaging for a distributable `.deb` agent is scaffolded but not implemented yet.
+- API e2e coverage is still thin; the repository-level smoke test is currently the strongest end-to-end verification path.
+- The metrics endpoint uses simple in-process counters rather than a full metrics client library.
